@@ -108,7 +108,7 @@ func handleAuth(c *gin.Context) {
 	}
 
 	// 从 query 读取可选参数
-	scope := c.DefaultQuery("scope", "read")
+	scope := c.DefaultQuery("scope", "profile")
 	state := c.DefaultQuery("state", "manual-test")
 
 	// 构建授权 URL
