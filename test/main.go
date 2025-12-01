@@ -169,7 +169,7 @@ func handleCallback(c *gin.Context) {
 		return
 	}
 
-	log.Printf("成功获取访问令牌: %s", token.AccessToken)
+	log.Printf("成功获取访问令牌: %s", token.AccessToken.AccessToken)
 
 	// 返回成功结果
 	c.JSON(http.StatusOK, gin.H{
@@ -177,12 +177,12 @@ func handleCallback(c *gin.Context) {
 		"message": "成功获取访问令牌",
 		"state":   state,
 		"token": gin.H{
-			"access_token":  token.AccessToken,
-			"token_type":    token.TokenType,
-			"expires_in":    token.ExpiresIn,
-			"refresh_token": token.RefreshToken,
-			"scope":         token.Scope,
+			"access_token":             token.AccessToken.AccessToken,
+			"access_token_expires_in":  token.AccessToken.ExpiresIn,
+			"refresh_token":            token.RefreshToken.RefreshToken,
+			"refresh_token_expires_in": token.RefreshToken.ExpiresIn,
+			"token_type":               token.TokenType,
+			"scope":                    token.Scope,
 		},
 	})
 }
-
