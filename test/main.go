@@ -63,9 +63,10 @@ func startTestServer(addr string) error {
 				"redirect_uri":      testRedirectURI,
 			},
 			"routes": gin.H{
-				"GET /":         "本说明页",
-				"GET /auth":     "发起 OAuth 授权（可选参数: ?scope=read&state=test）",
-				"GET /callback": "OAuth 回调地址（自动接收 code 并交换 token）",
+				"GET /":           "本说明页",
+				"GET /auth":       "发起 OAuth 授权（可选参数: ?scope=read&state=test）",
+				"GET /callback":   "OAuth 回调地址（自动接收 code 并交换 token）",
+				"GET /introspect": "内省访问令牌（必需参数: ?token=xxx）",
 			},
 			"usage": []string{
 				"1. 访问 /auth 发起授权",
@@ -80,6 +81,9 @@ func startTestServer(addr string) error {
 
 	// 授权回调
 	r.GET("/callback", handleCallback)
+
+	// 内省访问令牌
+	r.GET("/introspect", handleIntrospect)
 
 	return r.Run(addr)
 }
@@ -183,6 +187,65 @@ func handleCallback(c *gin.Context) {
 			"refresh_token_expires_in": token.RefreshToken.ExpiresIn,
 			"token_type":               token.TokenType,
 			"scope":                    token.Scope,
+		},
+	})
+}
+
+// handleIntrospect 处理内省请求
+func handleIntrospect(c *gin.Context) {
+	// 读取 token 参数
+	token := c.Query("token")
+
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "缺少 token 参数",
+			"detail": "请提供 token 参数，例如: /introspect?token=xxx",
+		})
+		return
+	}
+
+	// 创建客户端
+	client, err := newTestClient()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "创建客户端失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	// 打印日志（只显示 token 前 16 个字符以保护敏感信息）
+	tokenPreview := token
+	if len(token) > 16 {
+		tokenPreview = token[:16] + "..."
+	}
+	log.Printf("开始内省访问令牌: %s", tokenPreview)
+
+	// 调用内省接口
+	resp, err := client.IntrospectToken(context.Background(), token)
+	if err != nil {
+		log.Printf("内省令牌失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "内省访问令牌失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	log.Printf("内省成功: active=%v", resp.Active)
+
+	// 返回成功结果
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "内省成功",
+		"introspection": gin.H{
+			"active":     resp.Active,
+			"scope":      resp.Scope,
+			"client_id":  resp.ClientID,
+			"username":   resp.Username,
+			"token_type": resp.TokenType,
+			"exp":        resp.Exp,
+			"sub":        resp.Sub,
 		},
 	})
 }
