@@ -121,3 +121,71 @@ func parseTokenResponse(resp *http.Response, body []byte) (*TokenResponse, error
 
 	return &apiResp.Data, nil
 }
+
+// RefreshToken 使用刷新令牌获取新的访问令牌
+// 当访问令牌过期时，可以使用之前获取的刷新令牌来获取新的访问令牌，
+// 无需用户重新授权
+//
+// 参数:
+//   - ctx: 上下文，用于控制请求超时等
+//   - refreshToken: 之前获取的刷新令牌
+//
+// 示例用法:
+//
+//	// 使用刷新令牌获取新的访问令牌
+//	newToken, err := client.RefreshToken(context.Background(), token.RefreshToken.RefreshToken)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	// 使用新的访问令牌
+//	fmt.Printf("New Access Token: %s\n", newToken.AccessToken.AccessToken)
+func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (*TokenResponse, error) {
+	if refreshToken == "" {
+		return nil, fmt.Errorf("refresh_token is required")
+	}
+
+	// 构建并发送请求
+	req, err := buildRefreshTokenRequest(ctx, c, refreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, body, err := doTokenRequest(c, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// 解析响应
+	token, err := parseTokenResponse(resp, body)
+	if err != nil {
+		return nil, err
+	}
+
+	return token, nil
+}
+
+// buildRefreshTokenRequest 构建刷新令牌的 HTTP 请求
+func buildRefreshTokenRequest(ctx context.Context, c *Client, refreshToken string) (*http.Request, error) {
+	// 构建请求 URL
+	tokenURL := c.cfg.BackendBaseURL + "/api/v1/oauth/token"
+
+	// 构建表单参数
+	formData := url.Values{}
+	formData.Set("grant_type", "refresh_token")
+	formData.Set("refresh_token", refreshToken)
+
+	// 创建 HTTP 请求
+	req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(formData.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// 设置 Content-Type
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	// 设置 Basic Auth（client_id 和 client_secret）
+	req.SetBasicAuth(c.cfg.ClientID, c.cfg.ClientSecret)
+
+	return req, nil
+}

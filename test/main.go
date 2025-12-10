@@ -67,6 +67,7 @@ func startTestServer(addr string) error {
 				"GET /auth":       "发起 OAuth 授权（可选参数: ?scope=read&state=test）",
 				"GET /callback":   "OAuth 回调地址（自动接收 code 并交换 token）",
 				"GET /introspect": "内省访问令牌（必需参数: ?token=xxx）",
+				"GET /refresh":    "刷新访问令牌（必需参数: ?refresh_token=xxx）",
 			},
 			"usage": []string{
 				"1. 访问 /auth 发起授权",
@@ -84,6 +85,9 @@ func startTestServer(addr string) error {
 
 	// 内省访问令牌
 	r.GET("/introspect", handleIntrospect)
+
+	// 刷新访问令牌
+	r.GET("/refresh", handleRefresh)
 
 	return r.Run(addr)
 }
@@ -246,6 +250,67 @@ func handleIntrospect(c *gin.Context) {
 			"token_type": resp.TokenType,
 			"exp":        resp.Exp,
 			"sub":        resp.Sub,
+		},
+	})
+}
+
+// handleRefresh 处理刷新令牌请求
+func handleRefresh(c *gin.Context) {
+	// 读取 refresh_token 参数
+	refreshToken := c.Query("refresh_token")
+
+	if refreshToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "缺少 refresh_token 参数",
+			"detail":  "请提供 refresh_token 参数，例如: /refresh?refresh_token=xxx",
+		})
+		return
+	}
+
+	// 创建客户端
+	client, err := newTestClient()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "创建客户端失败",
+			"detail":  err.Error(),
+		})
+		return
+	}
+
+	// 打印日志（只显示 refresh_token 前 16 个字符以保护敏感信息）
+	tokenPreview := refreshToken
+	if len(refreshToken) > 16 {
+		tokenPreview = refreshToken[:16] + "..."
+	}
+	log.Printf("开始刷新访问令牌: %s", tokenPreview)
+
+	// 调用刷新令牌接口
+	token, err := client.RefreshToken(context.Background(), refreshToken)
+	if err != nil {
+		log.Printf("刷新令牌失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "刷新访问令牌失败",
+			"detail":  err.Error(),
+		})
+		return
+	}
+
+	log.Printf("成功刷新访问令牌: %s", token.AccessToken.AccessToken)
+
+	// 返回精简结果
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "刷新令牌成功",
+		"token": gin.H{
+			"access_token":             token.AccessToken.AccessToken,
+			"access_token_expires_in":  token.AccessToken.ExpiresIn,
+			"refresh_token":            token.RefreshToken.RefreshToken,
+			"refresh_token_expires_in": token.RefreshToken.ExpiresIn,
+			"token_type":               token.TokenType,
+			"scope":                    token.Scope,
 		},
 	})
 }
