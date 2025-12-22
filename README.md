@@ -7,6 +7,7 @@
 - 使用刷新令牌（refresh token）刷新访问令牌
 - 内省（introspect）令牌有效性（RFC 7662）
 - 撤销（revoke）令牌（RFC 7009）
+- 获取用户信息（userinfo）
 
 ## 安装
 
@@ -25,6 +26,7 @@ SDK 的配置分为两类 BaseURL：
   - `POST /api/v1/oauth/token` - 换取/刷新访问令牌
   - `POST /api/v1/oauth/introspect` - 令牌内省（RFC 7662）
   - `POST /api/v1/oauth/revoke` - 令牌撤销（RFC 7009）
+  - `GET /api/v1/oauth/userinfo` - 获取用户信息
 
 ### 接口响应格式
 
@@ -192,6 +194,27 @@ if err != nil {
 err = client.RevokeTokenWithHint(context.Background(), refreshToken, "refresh_token")
 ```
 
+### 7) 获取用户信息
+
+```go
+// 使用访问令牌获取用户信息
+info, err := client.UserInfo(context.Background(), token.AccessToken.AccessToken)
+if err != nil {
+	// 可尝试断言为 *goauthsdk.ProblemDetails 获取具体错误码
+	if pd, ok := err.(*goauthsdk.ProblemDetails); ok {
+		// pd.Code 可能为 INVALID_TOKEN、INSUFFICIENT_SCOPE、USER_NOT_FOUND 等
+		fmt.Printf("错误码: %s, 详情: %s\n", pd.Code, pd.Detail)
+	}
+	// handle error
+}
+
+// info.Sub       - 用户唯一标识（用户ID）
+// info.Nickname  - 用户昵称
+// info.Picture   - 用户头像URL
+// info.UpdatedAt - 用户信息更新时间（Unix 时间戳）
+fmt.Printf("用户ID: %s, 昵称: %s\n", info.Sub, info.Nickname)
+```
+
 ## 自定义 HTTPClient（可选）
 
 你可以传入自定义 `HTTPClient`（例如设置超时、代理、TLS 等）：
@@ -233,6 +256,7 @@ go run ./test
 - 用 `/refresh?refresh_token=xxx` 刷新 token
 - 用 `/revoke?token=xxx` 撤销 token
 - 用 `/revoke?token=xxx&token_type_hint=refresh_token` 撤销刷新令牌
+- 用 `/userinfo?token=xxx` 获取用户信息
 
 ## 常见注意事项
 

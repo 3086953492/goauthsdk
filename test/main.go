@@ -69,6 +69,7 @@ func startTestServer(addr string) error {
 				"GET /introspect": "内省令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
 				"GET /refresh":    "刷新访问令牌（必需参数: ?refresh_token=xxx）",
 				"GET /revoke":     "撤销令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
+				"GET /userinfo":   "获取用户信息（必需: ?token=xxx）",
 			},
 			"usage": []string{
 				"1. 访问 /auth 发起授权",
@@ -92,6 +93,9 @@ func startTestServer(addr string) error {
 
 	// 撤销令牌
 	r.GET("/revoke", handleRevoke)
+
+	// 获取用户信息
+	r.GET("/userinfo", handleUserInfo)
 
 	return r.Run(addr)
 }
@@ -364,5 +368,71 @@ func handleRevoke(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "令牌撤销成功",
+	})
+}
+
+// handleUserInfo 处理获取用户信息请求
+func handleUserInfo(c *gin.Context) {
+	// 读取 token 参数
+	token := c.Query("token")
+
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "缺少 token 参数",
+			"detail": "请提供 token 参数，例如: /userinfo?token=xxx",
+		})
+		return
+	}
+
+	// 创建客户端
+	client, err := newTestClient()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "创建客户端失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	// 打印日志（只显示 token 前 16 个字符以保护敏感信息）
+	tokenPreview := token
+	if len(token) > 16 {
+		tokenPreview = token[:16] + "..."
+	}
+	log.Printf("开始获取用户信息: %s", tokenPreview)
+
+	// 调用用户信息接口
+	info, err := client.UserInfo(context.Background(), token)
+	if err != nil {
+		log.Printf("获取用户信息失败: %v", err)
+
+		// 尝试断言为 ProblemDetails 以获取详细错误
+		if pd, ok := err.(*goauthsdk.ProblemDetails); ok {
+			c.JSON(pd.Status, gin.H{
+				"error":  pd.Code,
+				"detail": pd.Detail,
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "获取用户信息失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	log.Printf("获取用户信息成功: sub=%s, nickname=%s", info.Sub, info.Nickname)
+
+	// 返回用户信息
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "获取用户信息成功",
+		"data": gin.H{
+			"sub":        info.Sub,
+			"nickname":   info.Nickname,
+			"picture":    info.Picture,
+			"updated_at": info.UpdatedAt,
+		},
 	})
 }

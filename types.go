@@ -33,6 +33,29 @@ type IntrospectionResponse struct {
 	Sub       string `json:"sub,omitempty"`        // 主体标识
 }
 
+// UserInfo 用户信息结构体
+// 用于 GET /api/v1/oauth/userinfo 接口返回的用户信息
+type UserInfo struct {
+	Sub       string `json:"sub"`        // 用户唯一标识（用户ID）
+	Nickname  string `json:"nickname"`   // 用户昵称
+	Picture   string `json:"picture"`    // 用户头像URL
+	UpdatedAt int64  `json:"updated_at"` // 用户信息更新时间（Unix 时间戳）
+}
+
+// ProblemDetails 是 RFC 7807 Problem Details 风格的错误响应结构
+// 用于解析 401/403/404 等错误响应
+type ProblemDetails struct {
+	Type   string `json:"type"`   // 问题类型 URI（通常为 "about:blank"）
+	Status int    `json:"status"` // HTTP 状态码
+	Code   string `json:"code"`   // 业务错误码（如 INVALID_TOKEN、INSUFFICIENT_SCOPE）
+	Detail string `json:"detail"` // 错误详情描述
+}
+
+// Error 实现 error 接口，使 ProblemDetails 可作为 error 返回
+func (p *ProblemDetails) Error() string {
+	return p.Code + ": " + p.Detail
+}
+
 // apiCodeResponse 是后端 API 的通用响应结构
 // 接口格式：{ "code": 0, "message": "...", "data": {...} }（code == 0 表示成功）
 type apiCodeResponse[T any] struct {
