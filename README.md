@@ -5,7 +5,8 @@
 - 构建用户授权跳转 URL（前端授权确认页）
 - 使用授权码（code）交换访问令牌（access token）
 - 使用刷新令牌（refresh token）刷新访问令牌
-- 内省（introspect）访问令牌有效性
+- 内省（introspect）令牌有效性（RFC 7662）
+- 撤销（revoke）令牌（RFC 7009）
 
 ## 安装
 
@@ -21,10 +22,52 @@ SDK 的配置分为两类 BaseURL：
 
 - **FrontendBaseURL**：goauth 的前端站点地址（用于拼接用户授权确认页 `GET /oauth/authorize`）。
 - **BackendBaseURL**：goauth 的后端服务地址（用于调用实际接口）：
-  - `POST /api/v1/oauth/token`
-  - `POST /api/v1/oauth/introspect`
+  - `POST /api/v1/oauth/token` - 换取/刷新访问令牌
+  - `POST /api/v1/oauth/introspect` - 令牌内省（RFC 7662）
+  - `POST /api/v1/oauth/revoke` - 令牌撤销（RFC 7009）
 
-典型授权码流程：
+### 接口响应格式
+
+Token 接口返回格式为 `{ "code": 0, "message": "...", "data": {...} }`（`code == 0` 表示成功）：
+
+```json
+{
+  "code": 0,
+  "message": "交换访问令牌成功",
+  "data": {
+    "access_token": {
+      "access_token": "xxx",
+      "expires_in": 3600
+    },
+    "refresh_token": {
+      "refresh_token": "xxx",
+      "expires_in": 604800
+    },
+    "token_type": "Bearer",
+    "scope": "read write"
+  }
+}
+```
+
+Introspect 接口返回格式（data 部分符合 RFC 7662）：
+
+```json
+{
+  "code": 0,
+  "message": "内省成功",
+  "data": {
+    "active": true,
+    "scope": "read write",
+    "client_id": "xxx",
+    "username": "user@example.com",
+    "token_type": "Bearer",
+    "exp": 1703232000,
+    "sub": "user_id"
+  }
+}
+```
+
+### 典型授权码流程
 
 1. 你的应用把用户浏览器重定向到 `BuildAuthorizationURL(...)` 生成的地址（goauth 前端授权确认页）。
 2. 用户在授权页面确认授权后，goauth 会重定向回你的 **RedirectURI**，并携带 `code`（以及可选的 `state`）。
@@ -117,9 +160,10 @@ if err != nil {
 _ = newToken
 ```
 
-### 5) 内省访问令牌
+### 5) 内省令牌（RFC 7662）
 
 ```go
+// 内省访问令牌
 resp, err := client.IntrospectToken(context.Background(), token.AccessToken.AccessToken)
 if err != nil {
 	// handle error
@@ -130,6 +174,22 @@ if resp.Active {
 } else {
 	// 无效或已过期
 }
+
+// 也可以使用 token_type_hint 指定令牌类型
+resp, err = client.IntrospectTokenWithHint(context.Background(), refreshToken, "refresh_token")
+```
+
+### 6) 撤销令牌（RFC 7009）
+
+```go
+// 撤销访问令牌
+err := client.RevokeToken(context.Background(), token.AccessToken.AccessToken)
+if err != nil {
+	// handle error
+}
+
+// 也可以使用 token_type_hint 指定令牌类型
+err = client.RevokeTokenWithHint(context.Background(), refreshToken, "refresh_token")
 ```
 
 ## 自定义 HTTPClient（可选）
@@ -154,11 +214,11 @@ client, err := goauthsdk.NewClient(goauthsdk.Config{
 })
 ```
 
-> 说明：SDK 调用后端接口时会自动使用 Basic Auth（`client_id` / `client_secret`）。
+> 说明：SDK 调用 token、introspect 和 revoke 接口时会自动使用 Basic Auth（`client_id` / `client_secret`）。
 
 ## 运行本仓库的手工测试服务（可选）
 
-仓库自带一个用于开发/测试的手工验证服务：`test/main.go`，包含完整流程的路由（`/auth`、`/callback`、`/introspect`、`/refresh`）。
+仓库自带一个用于开发/测试的手工验证服务：`test/main.go`，包含完整流程的路由（`/auth`、`/callback`、`/introspect`、`/refresh`、`/revoke`）。
 
 ```bash
 go run ./test
@@ -169,7 +229,10 @@ go run ./test
 - 访问 `http://localhost:7000/auth` 发起授权
 - 授权完成后会自动回跳到 `/callback` 并展示 token
 - 用 `/introspect?token=xxx` 内省 token
+- 用 `/introspect?token=xxx&token_type_hint=refresh_token` 内省刷新令牌
 - 用 `/refresh?refresh_token=xxx` 刷新 token
+- 用 `/revoke?token=xxx` 撤销 token
+- 用 `/revoke?token=xxx&token_type_hint=refresh_token` 撤销刷新令牌
 
 ## 常见注意事项
 
@@ -177,5 +240,3 @@ go run ./test
 - **RedirectURI 必须完全一致**：需与 goauth 后台注册的回调地址匹配。
 - **生产环境务必使用 HTTPS**：避免 code/token 在传输过程中被窃取。
 - **不要在日志中打印完整 token/secret**：如需排查，建议仅打印前缀（仓库测试代码已做了前缀截断示例）。
-
-

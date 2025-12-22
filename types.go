@@ -33,10 +33,10 @@ type IntrospectionResponse struct {
 	Sub       string `json:"sub,omitempty"`        // 主体标识
 }
 
-// apiResponse 是后端 API 的通用响应结构
-// 参考前端 request.ts 对 success / message / data 的处理方式
-type apiResponse[T any] struct {
-	Success bool   `json:"success"`
+// apiCodeResponse 是后端 API 的通用响应结构
+// 接口格式：{ "code": 0, "message": "...", "data": {...} }（code == 0 表示成功）
+type apiCodeResponse[T any] struct {
+	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    T      `json:"data"`
 }

@@ -102,24 +102,34 @@ func doTokenRequest(c *Client, req *http.Request) (*http.Response, []byte, error
 }
 
 // parseTokenResponse 解析 token 响应，检查业务成功和 HTTP 状态码
+// 接口返回格式：{ "code": 0, "message": "...", "data": {...} }（code == 0 表示成功）
 func parseTokenResponse(resp *http.Response, body []byte) (*TokenResponse, error) {
-	// 解析响应
-	var apiResp apiResponse[TokenResponse]
-	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response (status: %d, body: %s): %w", resp.StatusCode, string(body), err)
-	}
-
-	// 检查业务是否成功
-	if !apiResp.Success {
-		return nil, fmt.Errorf("token exchange failed (status: %d): %s", resp.StatusCode, apiResp.Message)
-	}
-
 	// 检查 HTTP 状态码
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, apiResp.Message)
+		return nil, fmt.Errorf("token request failed with HTTP %d: %s", resp.StatusCode, truncateBody(body))
+	}
+
+	// 解析响应
+	var apiResp apiCodeResponse[TokenResponse]
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w (body: %s)", err, truncateBody(body))
+	}
+
+	// 检查业务是否成功（code == 0 表示成功）
+	if apiResp.Code != 0 {
+		return nil, fmt.Errorf("token exchange failed with code %d: %s", apiResp.Code, apiResp.Message)
 	}
 
 	return &apiResp.Data, nil
+}
+
+// truncateBody 截断响应体用于错误输出，避免日志过长
+func truncateBody(body []byte) string {
+	const maxLen = 200
+	if len(body) <= maxLen {
+		return string(body)
+	}
+	return string(body[:maxLen]) + "..."
 }
 
 // RefreshToken 使用刷新令牌获取新的访问令牌

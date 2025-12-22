@@ -66,8 +66,9 @@ func startTestServer(addr string) error {
 				"GET /":           "本说明页",
 				"GET /auth":       "发起 OAuth 授权（可选参数: ?scope=read&state=test）",
 				"GET /callback":   "OAuth 回调地址（自动接收 code 并交换 token）",
-				"GET /introspect": "内省访问令牌（必需参数: ?token=xxx）",
+				"GET /introspect": "内省令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
 				"GET /refresh":    "刷新访问令牌（必需参数: ?refresh_token=xxx）",
+				"GET /revoke":     "撤销令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
 			},
 			"usage": []string{
 				"1. 访问 /auth 发起授权",
@@ -88,6 +89,9 @@ func startTestServer(addr string) error {
 
 	// 刷新访问令牌
 	r.GET("/refresh", handleRefresh)
+
+	// 撤销令牌
+	r.GET("/revoke", handleRevoke)
 
 	return r.Run(addr)
 }
@@ -195,15 +199,16 @@ func handleCallback(c *gin.Context) {
 	})
 }
 
-// handleIntrospect 处理内省请求
+// handleIntrospect 处理内省请求（RFC 7662）
 func handleIntrospect(c *gin.Context) {
 	// 读取 token 参数
 	token := c.Query("token")
+	tokenTypeHint := c.Query("token_type_hint")
 
 	if token == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":  "缺少 token 参数",
-			"detail": "请提供 token 参数，例如: /introspect?token=xxx",
+			"detail": "请提供 token 参数，例如: /introspect?token=xxx 或 /introspect?token=xxx&token_type_hint=refresh_token",
 		})
 		return
 	}
@@ -223,14 +228,14 @@ func handleIntrospect(c *gin.Context) {
 	if len(token) > 16 {
 		tokenPreview = token[:16] + "..."
 	}
-	log.Printf("开始内省访问令牌: %s", tokenPreview)
+	log.Printf("开始内省令牌: %s (hint: %s)", tokenPreview, tokenTypeHint)
 
-	// 调用内省接口
-	resp, err := client.IntrospectToken(context.Background(), token)
+	// 调用内省接口（支持 token_type_hint）
+	resp, err := client.IntrospectTokenWithHint(context.Background(), token, tokenTypeHint)
 	if err != nil {
 		log.Printf("内省令牌失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":  "内省访问令牌失败",
+			"error":  "内省令牌失败",
 			"detail": err.Error(),
 		})
 		return
@@ -238,19 +243,15 @@ func handleIntrospect(c *gin.Context) {
 
 	log.Printf("内省成功: active=%v", resp.Active)
 
-	// 返回成功结果
+	// 返回 RFC 7662 格式的内省结果
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "内省成功",
-		"introspection": gin.H{
-			"active":     resp.Active,
-			"scope":      resp.Scope,
-			"client_id":  resp.ClientID,
-			"username":   resp.Username,
-			"token_type": resp.TokenType,
-			"exp":        resp.Exp,
-			"sub":        resp.Sub,
-		},
+		"active":     resp.Active,
+		"scope":      resp.Scope,
+		"client_id":  resp.ClientID,
+		"username":   resp.Username,
+		"token_type": resp.TokenType,
+		"exp":        resp.Exp,
+		"sub":        resp.Sub,
 	})
 }
 
@@ -312,5 +313,56 @@ func handleRefresh(c *gin.Context) {
 			"token_type":               token.TokenType,
 			"scope":                    token.Scope,
 		},
+	})
+}
+
+// handleRevoke 处理撤销令牌请求（RFC 7009）
+func handleRevoke(c *gin.Context) {
+	// 读取参数
+	token := c.Query("token")
+	tokenTypeHint := c.Query("token_type_hint")
+
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "缺少 token 参数",
+			"detail": "请提供 token 参数，例如: /revoke?token=xxx 或 /revoke?token=xxx&token_type_hint=refresh_token",
+		})
+		return
+	}
+
+	// 创建客户端
+	client, err := newTestClient()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "创建客户端失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	// 打印日志（只显示 token 前 16 个字符以保护敏感信息）
+	tokenPreview := token
+	if len(token) > 16 {
+		tokenPreview = token[:16] + "..."
+	}
+	log.Printf("开始撤销令牌: %s (hint: %s)", tokenPreview, tokenTypeHint)
+
+	// 调用撤销接口（支持 token_type_hint）
+	err = client.RevokeTokenWithHint(context.Background(), token, tokenTypeHint)
+	if err != nil {
+		log.Printf("撤销令牌失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "撤销令牌失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	log.Printf("撤销令牌成功")
+
+	// 按 RFC 7009，成功返回 HTTP 200
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "令牌撤销成功",
 	})
 }
