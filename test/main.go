@@ -25,10 +25,16 @@ const (
 	testClientID = "1"
 
 	// testClientSecret OAuth 客户端密钥
-	testClientSecret = "kwNC6fyfds303wOkqBtPNyMY03xSswbY"
+	testClientSecret = "mC9dvSBXPIIDLWP2MSauuxybZmICfNpq"
 
 	// testRedirectURI OAuth 回调地址，需与客户端注册的回调地址一致
 	testRedirectURI = "http://localhost:7000/callback"
+
+	// testAccessTokenSecret 访问令牌签名密钥，用于离线验证访问令牌（需与 goauth 服务端配置一致）
+	testAccessTokenSecret = "GO4ymlqBMkucpQ60roh17ZADPcY8outx"
+
+	// testRefreshTokenSecret 刷新令牌签名密钥，用于离线验证刷新令牌（需与 goauth 服务端配置一致）
+	testRefreshTokenSecret = "tnwBPejxaajp3m1AzLMAs9viS4GLGoLj"
 
 	// serverAddr 测试服务监听地址
 	serverAddr = ":7000"
@@ -63,13 +69,15 @@ func startTestServer(addr string) error {
 				"redirect_uri":      testRedirectURI,
 			},
 			"routes": gin.H{
-				"GET /":           "本说明页",
-				"GET /auth":       "发起 OAuth 授权（可选参数: ?scope=read&state=test）",
-				"GET /callback":   "OAuth 回调地址（自动接收 code 并交换 token）",
-				"GET /introspect": "内省令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
-				"GET /refresh":    "刷新访问令牌（必需参数: ?refresh_token=xxx）",
-				"GET /revoke":     "撤销令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
-				"GET /userinfo":   "获取用户信息（必需: ?token=xxx）",
+				"GET /":              "本说明页",
+				"GET /auth":          "发起 OAuth 授权（可选参数: ?scope=read&state=test）",
+				"GET /callback":      "OAuth 回调地址（自动接收 code 并交换 token）",
+				"GET /introspect":    "内省令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
+				"GET /refresh":       "刷新访问令牌（必需参数: ?refresh_token=xxx）",
+				"GET /revoke":        "撤销令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
+				"GET /userinfo":      "获取用户信息（必需: ?token=xxx）",
+				"GET /parse":         "离线解析令牌（必需: ?token=xxx，可选: &type=access|refresh）",
+				"GET /validate":      "离线验证令牌有效性（必需: ?token=xxx）",
 			},
 			"usage": []string{
 				"1. 访问 /auth 发起授权",
@@ -97,6 +105,12 @@ func startTestServer(addr string) error {
 	// 获取用户信息
 	r.GET("/userinfo", handleUserInfo)
 
+	// 离线解析令牌
+	r.GET("/parse", handleParse)
+
+	// 离线验证令牌
+	r.GET("/validate", handleValidate)
+
 	return r.Run(addr)
 }
 
@@ -108,6 +122,19 @@ func newTestClient() (*goauthsdk.Client, error) {
 		ClientID:        testClientID,
 		ClientSecret:    testClientSecret,
 		RedirectURI:     testRedirectURI,
+	})
+}
+
+// newTestClientWithJWT 创建支持离线验签的测试客户端
+func newTestClientWithJWT() (*goauthsdk.Client, error) {
+	return goauthsdk.NewClient(goauthsdk.Config{
+		FrontendBaseURL:    testFrontendBaseURL,
+		BackendBaseURL:     testBackendBaseURL,
+		ClientID:           testClientID,
+		ClientSecret:       testClientSecret,
+		RedirectURI:        testRedirectURI,
+		AccessTokenSecret:  testAccessTokenSecret,
+		RefreshTokenSecret: testRefreshTokenSecret,
 	})
 }
 
@@ -434,5 +461,142 @@ func handleUserInfo(c *gin.Context) {
 			"picture":    info.Picture,
 			"updated_at": info.UpdatedAt,
 		},
+	})
+}
+
+// handleParse 处理离线解析令牌请求
+func handleParse(c *gin.Context) {
+	// 读取参数
+	token := c.Query("token")
+	tokenType := c.DefaultQuery("type", "access")
+
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "缺少 token 参数",
+			"detail": "请提供 token 参数，例如: /parse?token=xxx 或 /parse?token=xxx&type=refresh",
+		})
+		return
+	}
+
+	// 创建支持 JWT 的客户端
+	client, err := newTestClientWithJWT()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "创建客户端失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	// 打印日志（只显示 token 前 16 个字符以保护敏感信息）
+	tokenPreview := token
+	if len(token) > 16 {
+		tokenPreview = token[:16] + "..."
+	}
+	log.Printf("开始离线解析令牌: %s (type: %s)", tokenPreview, tokenType)
+
+	// 根据类型调用不同的解析方法
+	if tokenType == "refresh" {
+		claims, err := client.ParseRefreshToken(token)
+		if err != nil {
+			log.Printf("离线解析刷新令牌失败: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":  "解析刷新令牌失败",
+				"detail": err.Error(),
+			})
+			return
+		}
+
+		log.Printf("离线解析刷新令牌成功: subject=%s", claims.Subject)
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "离线解析刷新令牌成功",
+			"claims": gin.H{
+				"token_type": claims.TokenType,
+				"extra":      claims.Extra,
+				"issuer":     claims.Issuer,
+				"subject":    claims.Subject,
+				"expires_at": claims.ExpiresAt,
+				"issued_at":  claims.IssuedAt,
+			},
+		})
+		return
+	}
+
+	// 默认解析访问令牌
+	claims, err := client.ParseAccessToken(token)
+	if err != nil {
+		log.Printf("离线解析访问令牌失败: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "解析访问令牌失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	log.Printf("离线解析访问令牌成功: subject=%s", claims.Subject)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "离线解析访问令牌成功",
+		"claims": gin.H{
+			"token_type": claims.TokenType,
+			"extra":      claims.Extra,
+			"issuer":     claims.Issuer,
+			"subject":    claims.Subject,
+			"expires_at": claims.ExpiresAt,
+			"issued_at":  claims.IssuedAt,
+		},
+	})
+}
+
+// handleValidate 处理离线验证令牌请求
+func handleValidate(c *gin.Context) {
+	// 读取参数
+	token := c.Query("token")
+
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "缺少 token 参数",
+			"detail": "请提供 token 参数，例如: /validate?token=xxx",
+		})
+		return
+	}
+
+	// 创建支持 JWT 的客户端
+	client, err := newTestClientWithJWT()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "创建客户端失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	// 打印日志（只显示 token 前 16 个字符以保护敏感信息）
+	tokenPreview := token
+	if len(token) > 16 {
+		tokenPreview = token[:16] + "..."
+	}
+	log.Printf("开始离线验证令牌: %s", tokenPreview)
+
+	// 验证令牌
+	err = client.ValidateToken(token)
+	if err != nil {
+		log.Printf("离线验证令牌失败: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "令牌验证失败",
+			"detail":  err.Error(),
+		})
+		return
+	}
+
+	log.Printf("离线验证令牌成功")
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "令牌验证成功，令牌有效",
 	})
 }

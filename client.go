@@ -2,12 +2,15 @@ package goauthsdk
 
 import (
 	"net/http"
+
+	"github.com/3086953492/gokit/jwt"
 )
 
 // Client 是 goauth SDK 的客户端
 // 封装了 OAuth 授权码模式的常用操作
 type Client struct {
-	cfg Config
+	cfg        Config
+	jwtManager *jwt.Manager
 }
 
 // NewClient 创建一个新的 goauth SDK 客户端
@@ -38,5 +41,19 @@ func NewClient(cfg Config) (*Client, error) {
 		cfg.HTTPClient = http.DefaultClient
 	}
 
-	return &Client{cfg: cfg}, nil
+	client := &Client{cfg: cfg}
+
+	// 若配置了 AccessTokenSecret 或 RefreshTokenSecret，初始化 jwtManager 用于离线验签
+	if cfg.AccessTokenSecret != "" || cfg.RefreshTokenSecret != "" {
+		jwtMgr, err := jwt.NewManager(
+			jwt.WithAccessSecret(cfg.AccessTokenSecret),
+			jwt.WithRefreshSecret(cfg.RefreshTokenSecret),
+		)
+		if err != nil {
+			return nil, err
+		}
+		client.jwtManager = jwtMgr
+	}
+
+	return client, nil
 }

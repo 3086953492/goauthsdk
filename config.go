@@ -28,6 +28,14 @@ type Config struct {
 
 	// HTTPClient 可选的 HTTP 客户端，不传则使用 http.DefaultClient
 	HTTPClient *http.Client
+
+	// AccessTokenSecret 可选的访问令牌签名密钥，用于离线验证访问令牌
+	// 若配置此字段，可使用 ParseAccessToken 方法进行本地验签
+	AccessTokenSecret string
+
+	// RefreshTokenSecret 可选的刷新令牌签名密钥，用于离线验证刷新令牌
+	// 若配置此字段，可使用 ParseRefreshToken 方法进行本地验签
+	RefreshTokenSecret string
 }
 
 // validateConfig 校验配置的必填字段

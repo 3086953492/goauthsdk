@@ -8,6 +8,7 @@
 - 内省（introspect）令牌有效性（RFC 7662）
 - 撤销（revoke）令牌（RFC 7009）
 - 获取用户信息（userinfo）
+- 离线验证令牌（基于 JWT 签名验签，无需调用服务端）
 
 ## 安装
 
@@ -258,9 +259,69 @@ go run ./test
 - 用 `/revoke?token=xxx&token_type_hint=refresh_token` 撤销刷新令牌
 - 用 `/userinfo?token=xxx` 获取用户信息
 
+## 离线验证令牌（可选）
+
+如果你的应用需要在本地验证 JWT 令牌（无需调用服务端 introspect 接口），可以在初始化时配置访问令牌和刷新令牌的签名密钥：
+
+```go
+client, err := goauthsdk.NewClient(goauthsdk.Config{
+	FrontendBaseURL:    "https://portal.example.com",
+	BackendBaseURL:     "https://auth.example.com",
+	ClientID:           "your-client-id",
+	ClientSecret:       "your-client-secret",
+	RedirectURI:        "https://yourapp.com/callback",
+	AccessTokenSecret:  "your-access-token-secret",  // 访问令牌签名密钥
+	RefreshTokenSecret: "your-refresh-token-secret", // 刷新令牌签名密钥
+})
+if err != nil {
+	log.Fatal(err)
+}
+
+// 离线解析访问令牌
+claims, err := client.ParseAccessToken(accessToken)
+if err != nil {
+	// 令牌无效、过期、签名错误等
+	log.Fatal(err)
+}
+
+fmt.Printf("用户标识(Subject): %s\n", claims.Subject)
+fmt.Printf("令牌类型: %s\n", claims.TokenType)
+fmt.Printf("扩展字段: %v\n", claims.Extra)
+fmt.Printf("过期时间: %v\n", claims.ExpiresAt)
+
+// 离线解析刷新令牌
+refreshClaims, err := client.ParseRefreshToken(refreshToken)
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Printf("刷新令牌用户标识: %s\n", refreshClaims.Subject)
+
+// 仅验证令牌有效性（不获取 claims）
+if err := client.ValidateToken(accessToken); err != nil {
+	log.Fatal("令牌无效:", err)
+}
+```
+
+**Claims 结构体字段说明：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `TokenType` | `TokenType` | 令牌类型：`access` 或 `refresh` |
+| `Extra` | `map[string]any` | 自定义扩展字段（角色、权限等） |
+| `Subject` | `string` | 用户唯一标识（来自 RegisteredClaims） |
+| `Issuer` | `string` | 令牌签发者 |
+| `ExpiresAt` | `*jwt.NumericDate` | 过期时间 |
+| `IssuedAt` | `*jwt.NumericDate` | 签发时间 |
+
+> **注意**：
+> - `AccessTokenSecret` 必须与 goauth 服务端配置的访问令牌签名密钥一致
+> - `RefreshTokenSecret` 必须与 goauth 服务端配置的刷新令牌签名密钥一致
+> - 两个密钥可以只配置其中一个，但对应的解析方法需要配置相应的密钥才能使用
+
 ## 常见注意事项
 
 - **state 建议必传**：用于防止 CSRF，回调时校验 `state` 是否与发起时一致。
 - **RedirectURI 必须完全一致**：需与 goauth 后台注册的回调地址匹配。
 - **生产环境务必使用 HTTPS**：避免 code/token 在传输过程中被窃取。
 - **不要在日志中打印完整 token/secret**：如需排查，建议仅打印前缀（仓库测试代码已做了前缀截断示例）。
+- **离线验签需要正确的密钥**：`AccessTokenSecret` 和 `RefreshTokenSecret` 必须分别与服务端签发对应令牌使用的密钥一致。
