@@ -12,13 +12,22 @@ type RefreshTokenInfo struct {
 	ExpiresIn    int    `json:"expires_in"`
 }
 
-// TokenResponse 是访问令牌响应
+// TokenResponse 是访问令牌响应（authorization_code / refresh_token 模式）
 // 与后端 dto.OAuthAccessTokenResponse 字段对齐
 type TokenResponse struct {
 	AccessToken  AccessTokenInfo  `json:"access_token"`
 	RefreshToken RefreshTokenInfo `json:"refresh_token"`
 	TokenType    string           `json:"token_type"`
 	Scope        string           `json:"scope"`
+}
+
+// ClientCredentialsTokenResponse 是客户端凭证模式（client_credentials）的访问令牌响应
+// 该模式无用户上下文，因此无 refresh_token
+type ClientCredentialsTokenResponse struct {
+	AccessToken string `json:"access_token"` // JWT 访问令牌
+	ExpiresIn   int    `json:"expires_in"`   // 过期时间（秒）
+	TokenType   string `json:"token_type"`   // 令牌类型，通常为 "Bearer"
+	Scope       string `json:"scope"`        // 授权范围；为空时返回空字符串
 }
 
 // IntrospectionResponse 内省响应结构体 (RFC 7662)

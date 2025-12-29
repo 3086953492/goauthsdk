@@ -199,3 +199,95 @@ func buildRefreshTokenRequest(ctx context.Context, c *Client, refreshToken strin
 
 	return req, nil
 }
+
+// ClientCredentialsToken 使用客户端凭证模式获取访问令牌
+// 该模式适用于服务端到服务端的机密通信，无用户上下文
+//
+// 参数:
+//   - ctx: 上下文，用于控制请求超时等
+//   - scope: 请求的权限范围；为空时服务端返回的 scope 也为空，不会自动赋默认值
+//
+// 注意事项:
+//   - 该模式下 JWT 的 sub 固定为 "client:<client_id>"
+//   - 使用该 token 调用 IntrospectToken 时，返回 active=true 但不含 username/sub
+//   - 该 token 不适用于 UserInfo 接口（因为无用户上下文）
+//
+// 示例用法:
+//
+//	token, err := client.ClientCredentialsToken(context.Background(), "api")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	// 使用访问令牌调用业务 API
+//	fmt.Printf("Access Token: %s\n", token.AccessToken)
+//	fmt.Printf("Expires In: %d seconds\n", token.ExpiresIn)
+func (c *Client) ClientCredentialsToken(ctx context.Context, scope string) (*ClientCredentialsTokenResponse, error) {
+	// 构建并发送请求
+	req, err := buildClientCredentialsTokenRequest(ctx, c, scope)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, body, err := doTokenRequest(c, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// 解析响应
+	token, err := parseClientCredentialsTokenResponse(resp, body)
+	if err != nil {
+		return nil, err
+	}
+
+	return token, nil
+}
+
+// buildClientCredentialsTokenRequest 构建客户端凭证模式的 HTTP 请求
+func buildClientCredentialsTokenRequest(ctx context.Context, c *Client, scope string) (*http.Request, error) {
+	// 构建请求 URL
+	tokenURL := c.cfg.BackendBaseURL + "/api/v1/oauth/token"
+
+	// 构建表单参数
+	formData := url.Values{}
+	formData.Set("grant_type", "client_credentials")
+	if scope != "" {
+		formData.Set("scope", scope)
+	}
+
+	// 创建 HTTP 请求
+	req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(formData.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// 设置 Content-Type
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	// 设置 Basic Auth（client_id 和 client_secret）
+	req.SetBasicAuth(c.cfg.ClientID, c.cfg.ClientSecret)
+
+	return req, nil
+}
+
+// parseClientCredentialsTokenResponse 解析客户端凭证模式的 token 响应
+// 响应格式：{ "code": 0, "message": "...", "data": { "access_token": "...", "expires_in": ..., "token_type": "...", "scope": "..." } }
+func parseClientCredentialsTokenResponse(resp *http.Response, body []byte) (*ClientCredentialsTokenResponse, error) {
+	// 检查 HTTP 状态码
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("client credentials token request failed with HTTP %d: %s", resp.StatusCode, truncateBody(body))
+	}
+
+	// 解析响应
+	var apiResp apiCodeResponse[ClientCredentialsTokenResponse]
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w (body: %s)", err, truncateBody(body))
+	}
+
+	// 检查业务是否成功（code == 0 表示成功）
+	if apiResp.Code != 0 {
+		return nil, fmt.Errorf("client credentials token request failed with code %d: %s", apiResp.Code, apiResp.Message)
+	}
+
+	return &apiResp.Data, nil
+}

@@ -69,15 +69,16 @@ func startTestServer(addr string) error {
 				"redirect_uri":      testRedirectURI,
 			},
 			"routes": gin.H{
-				"GET /":              "本说明页",
-				"GET /auth":          "发起 OAuth 授权（可选参数: ?scope=read&state=test）",
-				"GET /callback":      "OAuth 回调地址（自动接收 code 并交换 token）",
-				"GET /introspect":    "内省令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
-				"GET /refresh":       "刷新访问令牌（必需参数: ?refresh_token=xxx）",
-				"GET /revoke":        "撤销令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
-				"GET /userinfo":      "获取用户信息（必需: ?token=xxx）",
-				"GET /parse":         "离线解析令牌（必需: ?token=xxx，可选: &type=access|refresh）",
-				"GET /validate":      "离线验证令牌有效性（必需: ?token=xxx）",
+				"GET /":                   "本说明页",
+				"GET /auth":               "发起 OAuth 授权（可选参数: ?scope=read&state=test）",
+				"GET /callback":           "OAuth 回调地址（自动接收 code 并交换 token）",
+				"GET /client_credentials": "客户端凭证模式获取令牌（可选参数: ?scope=api）",
+				"GET /introspect":         "内省令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
+				"GET /refresh":            "刷新访问令牌（必需参数: ?refresh_token=xxx）",
+				"GET /revoke":             "撤销令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
+				"GET /userinfo":           "获取用户信息（必需: ?token=xxx）",
+				"GET /parse":              "离线解析令牌（必需: ?token=xxx，可选: &type=access|refresh）",
+				"GET /validate":           "离线验证令牌有效性（必需: ?token=xxx）",
 			},
 			"usage": []string{
 				"1. 访问 /auth 发起授权",
@@ -92,6 +93,9 @@ func startTestServer(addr string) error {
 
 	// 授权回调
 	r.GET("/callback", handleCallback)
+
+	// 客户端凭证模式
+	r.GET("/client_credentials", handleClientCredentials)
 
 	// 内省访问令牌
 	r.GET("/introspect", handleIntrospect)
@@ -227,6 +231,50 @@ func handleCallback(c *gin.Context) {
 			"token_type":               token.TokenType,
 			"scope":                    token.Scope,
 		},
+	})
+}
+
+// handleClientCredentials 处理客户端凭证模式请求
+func handleClientCredentials(c *gin.Context) {
+	// 从 query 读取可选参数
+	scope := c.DefaultQuery("scope", "")
+
+	// 创建客户端
+	client, err := newTestClient()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "创建客户端失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	log.Printf("开始客户端凭证模式获取令牌: scope=%s", scope)
+
+	// 调用客户端凭证模式接口
+	token, err := client.ClientCredentialsToken(context.Background(), scope)
+	if err != nil {
+		log.Printf("客户端凭证模式获取令牌失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "客户端凭证模式获取令牌失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	log.Printf("成功获取客户端凭证令牌: %s", token.AccessToken[:16]+"...")
+
+	// 返回成功结果
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "客户端凭证模式获取令牌成功",
+		"token": gin.H{
+			"access_token": token.AccessToken,
+			"expires_in":   token.ExpiresIn,
+			"token_type":   token.TokenType,
+			"scope":        token.Scope,
+		},
+		"note": "该 token 的 JWT sub 为 client:<client_id>，不适用于 /userinfo 接口",
 	})
 }
 
