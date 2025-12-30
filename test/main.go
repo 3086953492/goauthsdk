@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -77,6 +78,7 @@ func startTestServer(addr string) error {
 				"GET /refresh":            "刷新访问令牌（必需参数: ?refresh_token=xxx）",
 				"GET /revoke":             "撤销令牌（必需: ?token=xxx，可选: &token_type_hint=access_token|refresh_token）",
 				"GET /userinfo":           "获取用户信息（必需: ?token=xxx）",
+				"GET /user":               "获取用户详情（必需: ?token=xxx&user_id=123）",
 				"GET /parse":              "离线解析令牌（必需: ?token=xxx，可选: &type=access|refresh）",
 				"GET /validate":           "离线验证令牌有效性（必需: ?token=xxx）",
 			},
@@ -108,6 +110,9 @@ func startTestServer(addr string) error {
 
 	// 获取用户信息
 	r.GET("/userinfo", handleUserInfo)
+
+	// 获取用户详情
+	r.GET("/user", handleGetUser)
 
 	// 离线解析令牌
 	r.GET("/parse", handleParse)
@@ -508,6 +513,99 @@ func handleUserInfo(c *gin.Context) {
 			"nickname":   info.Nickname,
 			"picture":    info.Picture,
 			"updated_at": info.UpdatedAt,
+		},
+	})
+}
+
+// handleGetUser 处理获取用户详情请求
+func handleGetUser(c *gin.Context) {
+	// 读取参数
+	token := c.Query("token")
+	userIDStr := c.Query("user_id")
+
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "缺少 token 参数",
+			"detail": "请提供 token 参数，例如: /user?token=xxx&user_id=123",
+		})
+		return
+	}
+
+	if userIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "缺少 user_id 参数",
+			"detail": "请提供 user_id 参数，例如: /user?token=xxx&user_id=123",
+		})
+		return
+	}
+
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "user_id 参数无效",
+			"detail": "user_id 必须为正整数",
+		})
+		return
+	}
+
+	// 创建客户端
+	client, err := newTestClient()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "创建客户端失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	// 打印日志（只显示 token 前 16 个字符以保护敏感信息）
+	tokenPreview := token
+	if len(token) > 16 {
+		tokenPreview = token[:16] + "..."
+	}
+	log.Printf("开始获取用户详情: token=%s, user_id=%d", tokenPreview, userID)
+
+	// 调用获取用户详情接口
+	user, err := client.GetUser(context.Background(), token, userID)
+	if err != nil {
+		log.Printf("获取用户详情失败: %v", err)
+
+		// 尝试断言为 ProblemDetails 以获取详细错误
+		if pd, ok := err.(*goauthsdk.ProblemDetails); ok {
+			errorCode := pd.Code
+			if errorCode == "" {
+				errorCode = pd.Title
+			}
+			c.JSON(pd.Status, gin.H{
+				"error":  errorCode,
+				"detail": pd.Detail,
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "获取用户详情失败",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	log.Printf("获取用户详情成功: id=%d, username=%s, nickname=%s", user.ID, user.Username, user.Nickname)
+
+	// 返回用户详情
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "获取用户详情成功",
+		"data": gin.H{
+			"id":         user.ID,
+			"subject":    user.Subject,
+			"username":   user.Username,
+			"nickname":   user.Nickname,
+			"avatar":     user.Avatar,
+			"status":     user.Status,
+			"role":       user.Role,
+			"created_at": user.CreatedAt,
+			"updated_at": user.UpdatedAt,
 		},
 	})
 }
