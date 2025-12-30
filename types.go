@@ -54,15 +54,23 @@ type UserInfo struct {
 // ProblemDetails 是 RFC 7807 Problem Details 风格的错误响应结构
 // 用于解析 401/403/404 等错误响应
 type ProblemDetails struct {
-	Type   string `json:"type"`   // 问题类型 URI（通常为 "about:blank"）
-	Status int    `json:"status"` // HTTP 状态码
-	Code   string `json:"code"`   // 业务错误码（如 INVALID_TOKEN、INSUFFICIENT_SCOPE）
-	Detail string `json:"detail"` // 错误详情描述
+	Type   string `json:"type"`            // 问题类型 URI（通常为 "about:blank"）
+	Title  string `json:"title,omitempty"` // 错误标题（如 UNAUTHORIZED、FORBIDDEN、USER_NOT_FOUND）
+	Status int    `json:"status"`          // HTTP 状态码
+	Code   string `json:"code,omitempty"`  // 业务错误码（如 INVALID_TOKEN、INSUFFICIENT_SCOPE）
+	Detail string `json:"detail"`          // 错误详情描述
 }
 
 // Error 实现 error 接口，使 ProblemDetails 可作为 error 返回
 func (p *ProblemDetails) Error() string {
-	return p.Code + ": " + p.Detail
+	code := p.Code
+	if code == "" {
+		code = p.Title
+	}
+	if code == "" {
+		code = "UNKNOWN_ERROR"
+	}
+	return code + ": " + p.Detail
 }
 
 // apiCodeResponse 是后端 API 的通用响应结构

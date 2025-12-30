@@ -88,7 +88,7 @@ func doUserInfoRequest(c *Client, req *http.Request) (*http.Response, []byte, er
 
 // parseUserInfoResponse 解析用户信息响应
 // 成功时响应格式：{ "code": 0, "message": "...", "data": {...} }
-// 错误时响应格式：{ "type": "...", "status": ..., "code": "...", "detail": "..." }
+// 错误时响应格式：{ "type": "...", "title": "...", "status": ..., "code": "...", "detail": "..." }
 func parseUserInfoResponse(resp *http.Response, body []byte) (*UserInfo, error) {
 	// 成功响应
 	if resp.StatusCode == http.StatusOK {
@@ -105,13 +105,12 @@ func parseUserInfoResponse(resp *http.Response, body []byte) (*UserInfo, error) 
 		return &apiResp.Data, nil
 	}
 
-	// 错误响应：尝试解析为 ProblemDetails
+	// 错误响应：尝试解析为 ProblemDetails（兼容 code 或 title 任一存在的情况）
 	var pd ProblemDetails
-	if err := json.Unmarshal(body, &pd); err == nil && pd.Code != "" {
+	if err := json.Unmarshal(body, &pd); err == nil && (pd.Code != "" || pd.Title != "") {
 		return nil, &pd
 	}
 
 	// 回退：返回通用错误
 	return nil, fmt.Errorf("userinfo request failed with HTTP %d: %s", resp.StatusCode, truncateBody(body))
 }
-
