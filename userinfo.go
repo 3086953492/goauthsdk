@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+
+	"github.com/3086953492/goauthsdk/internal/httpx"
 )
 
 // UserInfo 获取当前访问令牌对应的用户信息
@@ -70,20 +71,7 @@ func buildUserInfoRequest(ctx context.Context, c *Client, accessToken string) (*
 
 // doUserInfoRequest 发送用户信息请求并返回响应与响应体
 func doUserInfoRequest(c *Client, req *http.Request) (*http.Response, []byte, error) {
-	// 发送请求
-	resp, err := c.cfg.HTTPClient.Do(req)
-	if err != nil {
-		return nil, nil, fmt.Errorf("send userinfo request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// 读取响应体
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read userinfo response body: %w", err)
-	}
-
-	return resp, body, nil
+	return httpx.Do(c.cfg.HTTPClient, req)
 }
 
 // parseUserInfoResponse 解析用户信息响应

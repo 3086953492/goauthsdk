@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/3086953492/goauthsdk/internal/httpx"
 )
 
 // IntrospectToken 内省访问令牌（RFC 7662）
@@ -108,20 +109,7 @@ func buildIntrospectRequest(ctx context.Context, c *Client, token, tokenTypeHint
 
 // doIntrospectRequest 发送内省请求并返回响应与响应体
 func doIntrospectRequest(c *Client, req *http.Request) (*http.Response, []byte, error) {
-	// 发送请求
-	resp, err := c.cfg.HTTPClient.Do(req)
-	if err != nil {
-		return nil, nil, fmt.Errorf("send introspect request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// 读取响应体
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read introspect response body: %w", err)
-	}
-
-	return resp, body, nil
+	return httpx.Do(c.cfg.HTTPClient, req)
 }
 
 // parseIntrospectResponse 解析内省响应

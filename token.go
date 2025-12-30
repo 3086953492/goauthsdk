@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/3086953492/goauthsdk/internal/httpx"
 )
 
 // ExchangeToken 使用授权码交换访问令牌
@@ -85,20 +86,7 @@ func buildTokenRequest(ctx context.Context, c *Client, code string) (*http.Reque
 
 // doTokenRequest 发送 token 请求并返回响应与响应体
 func doTokenRequest(c *Client, req *http.Request) (*http.Response, []byte, error) {
-	// 发送请求
-	resp, err := c.cfg.HTTPClient.Do(req)
-	if err != nil {
-		return nil, nil, fmt.Errorf("send token request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// 读取响应体
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read token response body: %w", err)
-	}
-
-	return resp, body, nil
+	return httpx.Do(c.cfg.HTTPClient, req)
 }
 
 // parseTokenResponse 解析 token 响应，检查业务成功和 HTTP 状态码

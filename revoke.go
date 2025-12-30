@@ -3,10 +3,11 @@ package goauthsdk
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/3086953492/goauthsdk/internal/httpx"
 )
 
 // RevokeToken 撤销令牌（RFC 7009）
@@ -102,18 +103,5 @@ func buildRevokeRequest(ctx context.Context, c *Client, token, tokenTypeHint str
 
 // doRevokeRequest 发送撤销请求并返回响应与响应体
 func doRevokeRequest(c *Client, req *http.Request) (*http.Response, []byte, error) {
-	// 发送请求
-	resp, err := c.cfg.HTTPClient.Do(req)
-	if err != nil {
-		return nil, nil, fmt.Errorf("send revoke request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// 读取响应体
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read revoke response body: %w", err)
-	}
-
-	return resp, body, nil
+	return httpx.Do(c.cfg.HTTPClient, req)
 }
