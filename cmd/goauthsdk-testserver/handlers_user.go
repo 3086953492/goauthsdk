@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -45,11 +46,12 @@ func handleUserInfo(c *gin.Context) {
 	if err != nil {
 		log.Printf("获取用户信息失败: %v", err)
 
-		// 尝试断言为 ProblemDetails 以获取详细错误
-		if pd, ok := err.(*goauthsdk.ProblemDetails); ok {
-			c.JSON(pd.Status, gin.H{
-				"error":  pd.Code,
-				"detail": pd.Detail,
+		// 尝试断言为 APIError 以获取详细错误
+		var apiErr *goauthsdk.APIError
+		if errors.As(err, &apiErr) {
+			c.JSON(apiErr.Status, gin.H{
+				"error":  apiErr.Code,
+				"detail": apiErr.Detail,
 			})
 			return
 		}
@@ -129,15 +131,12 @@ func handleGetUser(c *gin.Context) {
 	if err != nil {
 		log.Printf("获取用户详情失败: %v", err)
 
-		// 尝试断言为 ProblemDetails 以获取详细错误
-		if pd, ok := err.(*goauthsdk.ProblemDetails); ok {
-			errorCode := pd.Code
-			if errorCode == "" {
-				errorCode = pd.Title
-			}
-			c.JSON(pd.Status, gin.H{
-				"error":  errorCode,
-				"detail": pd.Detail,
+		// 尝试断言为 APIError 以获取详细错误
+		var apiErr *goauthsdk.APIError
+		if errors.As(err, &apiErr) {
+			c.JSON(apiErr.Status, gin.H{
+				"error":  apiErr.Code,
+				"detail": apiErr.Detail,
 			})
 			return
 		}

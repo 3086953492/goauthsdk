@@ -25,7 +25,7 @@ func (c *Client) BuildAuthorizationURL(state, scope string) (string, error) {
 	// 构造前端授权确认页地址
 	u, err := url.Parse(c.cfg.FrontendBaseURL + "/oauth/authorize")
 	if err != nil {
-		return "", fmt.Errorf("failed to parse frontend base URL: %w", err)
+		return "", fmt.Errorf("parse frontend base url: %w", err)
 	}
 
 	// 构建 query 参数

@@ -67,7 +67,7 @@ func (c *Client) RevokeTokenWithHint(ctx context.Context, token, tokenTypeHint s
 
 	// 按 RFC 7009，HTTP 200 即成功（不关心令牌是否存在）
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("revoke request failed with HTTP %d: %s", resp.StatusCode, truncateBody(body))
+		return decodeAPIError(resp, body)
 	}
 
 	return nil
@@ -88,7 +88,7 @@ func buildRevokeRequest(ctx context.Context, c *Client, token, tokenTypeHint str
 	// 创建 HTTP 请求
 	req, err := http.NewRequestWithContext(ctx, "POST", revokeURL, strings.NewReader(formData.Encode()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("create revoke request: %w", err)
 	}
 
 	// 设置 Content-Type
@@ -105,14 +105,14 @@ func doRevokeRequest(c *Client, req *http.Request) (*http.Response, []byte, erro
 	// 发送请求
 	resp, err := c.cfg.HTTPClient.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to send request: %w", err)
+		return nil, nil, fmt.Errorf("send revoke request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// 读取响应体
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, nil, fmt.Errorf("read revoke response body: %w", err)
 	}
 
 	return resp, body, nil

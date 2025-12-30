@@ -94,7 +94,7 @@ func buildIntrospectRequest(ctx context.Context, c *Client, token, tokenTypeHint
 	// 创建 HTTP 请求
 	req, err := http.NewRequestWithContext(ctx, "POST", introspectURL, strings.NewReader(formData.Encode()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("create introspect request: %w", err)
 	}
 
 	// 设置 Content-Type
@@ -111,14 +111,14 @@ func doIntrospectRequest(c *Client, req *http.Request) (*http.Response, []byte, 
 	// 发送请求
 	resp, err := c.cfg.HTTPClient.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to send request: %w", err)
+		return nil, nil, fmt.Errorf("send introspect request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// 读取响应体
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, nil, fmt.Errorf("read introspect response body: %w", err)
 	}
 
 	return resp, body, nil
@@ -127,20 +127,20 @@ func doIntrospectRequest(c *Client, req *http.Request) (*http.Response, []byte, 
 // parseIntrospectResponse 解析内省响应
 // 响应格式：{ "code": 0, "message": "...", "data": { "active": true, ... } }
 func parseIntrospectResponse(resp *http.Response, body []byte) (*IntrospectionResponse, error) {
-	// 检查 HTTP 状态码
+	// 非 2xx：统一走 decodeAPIError
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("introspection request failed with HTTP %d: %s", resp.StatusCode, truncateBody(body))
+		return nil, decodeAPIError(resp, body)
 	}
 
 	// 解析包装响应
 	var apiResp apiCodeResponse[IntrospectionResponse]
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return nil, fmt.Errorf("failed to parse introspection response: %w (body: %s)", err, truncateBody(body))
+		return nil, fmt.Errorf("parse introspection response: %w", err)
 	}
 
 	// 检查业务是否成功（code == 0 表示成功）
 	if apiResp.Code != 0 {
-		return nil, fmt.Errorf("introspection failed with code %d: %s", apiResp.Code, apiResp.Message)
+		return nil, newBusinessError(resp.StatusCode, apiResp.Code, apiResp.Message)
 	}
 
 	return &apiResp.Data, nil

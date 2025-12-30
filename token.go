@@ -71,7 +71,7 @@ func buildTokenRequest(ctx context.Context, c *Client, code string) (*http.Reque
 	// 创建 HTTP 请求
 	req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(formData.Encode()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("create token request: %w", err)
 	}
 
 	// 设置 Content-Type
@@ -88,14 +88,14 @@ func doTokenRequest(c *Client, req *http.Request) (*http.Response, []byte, error
 	// 发送请求
 	resp, err := c.cfg.HTTPClient.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to send request: %w", err)
+		return nil, nil, fmt.Errorf("send token request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// 读取响应体
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, nil, fmt.Errorf("read token response body: %w", err)
 	}
 
 	return resp, body, nil
@@ -104,32 +104,23 @@ func doTokenRequest(c *Client, req *http.Request) (*http.Response, []byte, error
 // parseTokenResponse 解析 token 响应，检查业务成功和 HTTP 状态码
 // 接口返回格式：{ "code": 0, "message": "...", "data": {...} }（code == 0 表示成功）
 func parseTokenResponse(resp *http.Response, body []byte) (*TokenResponse, error) {
-	// 检查 HTTP 状态码
+	// 非 2xx：统一走 decodeAPIError
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("token request failed with HTTP %d: %s", resp.StatusCode, truncateBody(body))
+		return nil, decodeAPIError(resp, body)
 	}
 
 	// 解析响应
 	var apiResp apiCodeResponse[TokenResponse]
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w (body: %s)", err, truncateBody(body))
+		return nil, fmt.Errorf("parse token response: %w", err)
 	}
 
 	// 检查业务是否成功（code == 0 表示成功）
 	if apiResp.Code != 0 {
-		return nil, fmt.Errorf("token exchange failed with code %d: %s", apiResp.Code, apiResp.Message)
+		return nil, newBusinessError(resp.StatusCode, apiResp.Code, apiResp.Message)
 	}
 
 	return &apiResp.Data, nil
-}
-
-// truncateBody 截断响应体用于错误输出，避免日志过长
-func truncateBody(body []byte) string {
-	const maxLen = 200
-	if len(body) <= maxLen {
-		return string(body)
-	}
-	return string(body[:maxLen]) + "..."
 }
 
 // RefreshToken 使用刷新令牌获取新的访问令牌
@@ -188,7 +179,7 @@ func buildRefreshTokenRequest(ctx context.Context, c *Client, refreshToken strin
 	// 创建 HTTP 请求
 	req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(formData.Encode()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("create refresh token request: %w", err)
 	}
 
 	// 设置 Content-Type
@@ -258,7 +249,7 @@ func buildClientCredentialsTokenRequest(ctx context.Context, c *Client, scope st
 	// 创建 HTTP 请求
 	req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(formData.Encode()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("create client credentials token request: %w", err)
 	}
 
 	// 设置 Content-Type
@@ -273,20 +264,20 @@ func buildClientCredentialsTokenRequest(ctx context.Context, c *Client, scope st
 // parseClientCredentialsTokenResponse 解析客户端凭证模式的 token 响应
 // 响应格式：{ "code": 0, "message": "...", "data": { "access_token": "...", "expires_in": ..., "token_type": "...", "scope": "..." } }
 func parseClientCredentialsTokenResponse(resp *http.Response, body []byte) (*ClientCredentialsTokenResponse, error) {
-	// 检查 HTTP 状态码
+	// 非 2xx：统一走 decodeAPIError
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("client credentials token request failed with HTTP %d: %s", resp.StatusCode, truncateBody(body))
+		return nil, decodeAPIError(resp, body)
 	}
 
 	// 解析响应
 	var apiResp apiCodeResponse[ClientCredentialsTokenResponse]
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w (body: %s)", err, truncateBody(body))
+		return nil, fmt.Errorf("parse client credentials token response: %w", err)
 	}
 
 	// 检查业务是否成功（code == 0 表示成功）
 	if apiResp.Code != 0 {
-		return nil, fmt.Errorf("client credentials token request failed with code %d: %s", apiResp.Code, apiResp.Message)
+		return nil, newBusinessError(resp.StatusCode, apiResp.Code, apiResp.Message)
 	}
 
 	return &apiResp.Data, nil

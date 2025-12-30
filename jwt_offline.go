@@ -8,7 +8,7 @@ import (
 )
 
 // ErrJWTNotConfigured 表示未配置 JWT 密钥，无法进行离线验签
-var ErrJWTNotConfigured = errors.New("jwt manager not configured: AccessTokenSecret or RefreshTokenSecret is required")
+var ErrJWTNotConfigured = errors.New("jwt manager not configured: access_token_secret or refresh_token_secret is required")
 
 // ParseAccessToken 离线解析并验证访问令牌
 // 返回令牌中的 Claims 信息，包括 Subject（用户标识）、令牌类型、自定义扩展字段等

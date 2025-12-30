@@ -40,10 +40,10 @@ import (
 //	fmt.Printf("用户ID: %d, 用户名: %s, 昵称: %s\n", user.ID, user.Username, user.Nickname)
 func (c *Client) GetUser(ctx context.Context, accessToken string, userID uint64) (*UserDetail, error) {
 	if accessToken == "" {
-		return nil, fmt.Errorf("accessToken is required")
+		return nil, fmt.Errorf("access_token is required")
 	}
 	if userID == 0 {
-		return nil, fmt.Errorf("userID is required")
+		return nil, fmt.Errorf("user_id is required")
 	}
 
 	// 构建请求
@@ -70,7 +70,7 @@ func buildGetUserRequest(ctx context.Context, c *Client, accessToken string, use
 	// 创建 HTTP 请求
 	req, err := http.NewRequestWithContext(ctx, "GET", userURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("create get user request: %w", err)
 	}
 
 	// 设置 Authorization header
@@ -84,14 +84,14 @@ func doGetUserRequest(c *Client, req *http.Request) (*http.Response, []byte, err
 	// 发送请求
 	resp, err := c.cfg.HTTPClient.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to send request: %w", err)
+		return nil, nil, fmt.Errorf("send get user request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// 读取响应体
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, nil, fmt.Errorf("read get user response body: %w", err)
 	}
 
 	return resp, body, nil
@@ -101,27 +101,21 @@ func doGetUserRequest(c *Client, req *http.Request) (*http.Response, []byte, err
 // 成功时响应格式：{ "code": 0, "message": "...", "data": {...} }
 // 错误时响应格式：{ "type": "...", "title": "...", "status": ..., "detail": "..." }
 func parseGetUserResponse(resp *http.Response, body []byte) (*UserDetail, error) {
-	// 成功响应
-	if resp.StatusCode == http.StatusOK {
-		var apiResp apiCodeResponse[UserDetail]
-		if err := json.Unmarshal(body, &apiResp); err != nil {
-			return nil, fmt.Errorf("failed to parse user response: %w (body: %s)", err, truncateBody(body))
-		}
-
-		// 检查业务是否成功（code == 0 表示成功）
-		if apiResp.Code != 0 {
-			return nil, fmt.Errorf("get user request failed with code %d: %s", apiResp.Code, apiResp.Message)
-		}
-
-		return &apiResp.Data, nil
+	// 非 2xx：统一走 decodeAPIError
+	if resp.StatusCode != http.StatusOK {
+		return nil, decodeAPIError(resp, body)
 	}
 
-	// 错误响应：尝试解析为 ProblemDetails
-	var pd ProblemDetails
-	if err := json.Unmarshal(body, &pd); err == nil && (pd.Code != "" || pd.Title != "") {
-		return nil, &pd
+	// 解析响应
+	var apiResp apiCodeResponse[UserDetail]
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return nil, fmt.Errorf("parse user response: %w", err)
 	}
 
-	// 回退：返回通用错误
-	return nil, fmt.Errorf("get user request failed with HTTP %d: %s", resp.StatusCode, truncateBody(body))
+	// 检查业务是否成功（code == 0 表示成功）
+	if apiResp.Code != 0 {
+		return nil, newBusinessError(resp.StatusCode, apiResp.Code, apiResp.Message)
+	}
+
+	return &apiResp.Data, nil
 }

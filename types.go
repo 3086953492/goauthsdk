@@ -82,7 +82,7 @@ func (p *ProblemDetails) Error() string {
 		code = p.Title
 	}
 	if code == "" {
-		code = "UNKNOWN_ERROR"
+		code = "unknown_error"
 	}
 	return code + ": " + p.Detail
 }

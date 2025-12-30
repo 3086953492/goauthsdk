@@ -1,6 +1,7 @@
 package goauthsdk
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/3086953492/gokit/jwt"
@@ -50,7 +51,7 @@ func NewClient(cfg Config) (*Client, error) {
 			jwt.WithRefreshSecret(cfg.RefreshTokenSecret),
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("create jwt manager: %w", err)
 		}
 		client.jwtManager = jwtMgr
 	}
