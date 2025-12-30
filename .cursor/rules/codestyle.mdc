@@ -1,0 +1,100 @@
+---
+alwaysApply: true
+---
+# goauthsdk 项目代码风格规则
+
+## 1. 总体原则
+
+- **一致性优先**：同一类问题全仓库同一写法（命名、错误、HTTP 调用等）。
+- **简单优先**：避免“聪明代码”，优先直白可读。
+- **库与示例分离**：`cmd/goauthsdk-testserver` 允许更“应用化”的写法；
+  根目录库代码保持更“可复用”的 SDK 风格。
+
+## 2. 文件头部顺序
+- **文件头部顺序**：`package` → `import` → const/var/type → func。
+
+## 3. 包与目录结构
+
+- **包名小写、简短、不下划线**：例如 `goauthsdk`、`internal/foo`。
+- **避免循环依赖**：抽公共逻辑到更底层包，或反向依赖通过接口解耦。
+- **库代码不依赖 cmd**：`cmd/...` 可以依赖库，反之不行。
+- **一个文件一类职责**：例如 `token.go` 聚焦 token 相关 API 与解析。
+
+## 4. 命名规范
+
+- **导出标识符必须可读**：`UserInfo`、`TokenResponse` OK；避免缩写堆叠。
+- **缩写一致**：`URL`、`HTTP`、`ID` 等使用 Go 习惯大写。
+- **receiver 命名**：
+  - 常用 `c *Client`、`s *Server`、`r *Request`
+  - 不使用 `this`、`self`
+- **接口命名**：优先描述能力而非实现：
+  - 好：`TokenProvider`、`HTTPDoer`
+  - 避免：`IClient`、`ClientInterface`
+
+## 5. 注释与文档
+
+- **导出类型/函数必须有注释**：以标识符开头，描述“做什么/何时用/返回什么”。
+- **注释语言统一中文**：面向本项目维护者，中文更直接；
+  但**错误字符串**遵循 Go 惯例（见下节）。
+- **避免重复注释**：代码已表达清楚时不写“废话注释”。
+
+## 6. 错误处理（强制）
+
+Go 社区共识：错误字符串是 API 的一部分，应稳定、可匹配、可比较。
+
+- **错误字符串必须小写开头、无结尾标点**：
+  - 好：`"client_id is required"`
+  - 避免：`"ClientID is required"`、`"missing client id."`
+- **包装错误必须使用 `%w`**：保留根因便于 `errors.Is/As`。
+  - 好：`fmt.Errorf("create request: %w", err)`
+- **不要用字符串比较判断错误**：统一用 `errors.Is/As`。
+- **为可识别的业务错误定义哨兵错误或类型**：
+  - 例如：`var ErrUnauthorized = errors.New("unauthorized")`
+  - 或：`type APIError struct { Status int; Code string; ... }`
+- **返回值约定**：出现错误时，其他返回值必须为零值。
+- **错误上下文写法**：用动词短语，避免重复堆叠：
+  - 好：`"read response body"`
+  - 好：`"parse token response"`
+
+## 7. HTTP 与 Context（强制）
+
+SDK 代码的稳定性很大程度取决于 HTTP 规范与超时策略。
+
+- **所有网络调用必须接收 `context.Context`**：
+  - 导出方法：`func (c *Client) Foo(ctx context.Context, ...) (...)`
+- **不得使用 `context.Background()` 作为库内部默认 ctx**：
+  - 由调用方决定；示例代码可用 `context.Background()`。
+- **HTTPClient 必须可注入**：通过 `Config.HTTPClient`。
+- **请求构建/发送/解析三段式**（建议保持当前模式）：
+  - `buildXRequest(...) (*http.Request, error)`
+  - `doXRequest(...) (*http.Response, []byte, error)`
+  - `parseXResponse(...) (*T, error)`
+- **响应体读取**：失败时返回可定位的包装错误。
+- **错误响应处理统一入口**：
+  - 建议新增 `parseProblemDetails(body)` 或 `decodeAPIError(resp, body)`，
+    让所有 API 共享同一套错误解析。
+
+## 8. JSON/DTO 结构体
+
+- **字段 tag 统一 `json:"snake_case"`**，与后端接口对齐。
+- **时间字段**：
+  - 若接口返回 Unix 时间戳：用 `int64` 并在注释标明单位
+  - 若接口返回 ISO 8601：优先 `string`（SDK 不强行解析）
+- **避免过度复用 DTO**：不同接口差异明确时宁可新建结构体。
+
+## 9. 依赖与版本
+
+- **谨慎引入新依赖**：每新增一个依赖必须说明必要性与替代方案。
+- **避免把应用级依赖带入 SDK**：例如复杂日志框架、配置框架等。
+
+## 10. 安全与敏感信息
+
+- **禁止在日志/错误中输出密钥**：`ClientSecret`、token 等必须脱敏或不输出。
+- **truncate 仅用于调试信息**：对外返回的错误信息避免包含原始响应体。
+
+## 11. 提交前自检清单（建议）
+
+- 错误字符串是否符合小写规则
+- 是否对外暴露了不必要的字段/类型
+- 是否所有网络调用均可被 `context` 取消
+- 是否避免记录敏感信息
