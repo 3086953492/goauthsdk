@@ -2,13 +2,12 @@ package goauthsdk
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/3086953492/gokit/jwt"
 )
 
 // ErrJWTNotConfigured 表示未配置 JWT 密钥，无法进行离线验签
-var ErrJWTNotConfigured = errors.New("jwt manager not configured: access_token_secret or refresh_token_secret is required")
+var ErrJWTNotConfigured = errors.New("jwt verifier not configured: access_token_secret or refresh_token_secret is required")
 
 // ParseAccessToken 离线解析并验证访问令牌
 // 返回令牌中的 Claims 信息，包括 Subject（用户标识）、令牌类型、自定义扩展字段等
@@ -33,13 +32,10 @@ var ErrJWTNotConfigured = errors.New("jwt manager not configured: access_token_s
 //	fmt.Printf("Subject: %s\n", claims.Subject)
 //	fmt.Printf("TokenType: %s\n", claims.TokenType)
 func (c *Client) ParseAccessToken(token string) (*jwt.Claims, error) {
-	if token == "" {
-		return nil, fmt.Errorf("token is required")
-	}
-	if c.jwtManager == nil {
+	if c.jwtVerifier == nil {
 		return nil, ErrJWTNotConfigured
 	}
-	return c.jwtManager.ParseAccessToken(token)
+	return c.jwtVerifier.ParseAccessToken(token)
 }
 
 // ParseRefreshToken 离线解析并验证刷新令牌
@@ -64,13 +60,10 @@ func (c *Client) ParseAccessToken(token string) (*jwt.Claims, error) {
 //	}
 //	fmt.Printf("Subject: %s\n", claims.Subject)
 func (c *Client) ParseRefreshToken(token string) (*jwt.Claims, error) {
-	if token == "" {
-		return nil, fmt.Errorf("token is required")
-	}
-	if c.jwtManager == nil {
+	if c.jwtVerifier == nil {
 		return nil, ErrJWTNotConfigured
 	}
-	return c.jwtManager.ParseRefreshToken(token)
+	return c.jwtVerifier.ParseRefreshToken(token)
 }
 
 // ValidateToken 离线验证令牌的有效性（不返回 Claims）
@@ -86,11 +79,8 @@ func (c *Client) ParseRefreshToken(token string) (*jwt.Claims, error) {
 //   - 使用此方法前，必须在初始化 Client 时配置 AccessTokenSecret 或 RefreshTokenSecret
 //   - 若未配置，将返回 ErrJWTNotConfigured 错误
 func (c *Client) ValidateToken(token string) error {
-	if token == "" {
-		return fmt.Errorf("token is required")
-	}
-	if c.jwtManager == nil {
+	if c.jwtVerifier == nil {
 		return ErrJWTNotConfigured
 	}
-	return c.jwtManager.ValidateToken(token)
+	return c.jwtVerifier.ValidateToken(token)
 }
