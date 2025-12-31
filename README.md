@@ -108,13 +108,13 @@ import (
 )
 
 func main() {
-	client, err := goauthsdk.NewClient(goauthsdk.Config{
-		FrontendBaseURL: "https://portal.example.com",
-		BackendBaseURL:  "https://auth.example.com",
-		ClientID:        "your-client-id",
-		ClientSecret:    "your-client-secret",
-		RedirectURI:     "https://yourapp.com/callback",
-	})
+	client, err := goauthsdk.NewClient(
+		"https://portal.example.com",  // 前端站点地址
+		"https://auth.example.com",    // 后端服务地址
+		"your-client-id",              // OAuth 客户端 ID
+		"your-client-secret",          // OAuth 客户端密钥
+		"https://yourapp.com/callback", // OAuth 回调地址
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -321,7 +321,7 @@ if err != nil {
 
 ## 自定义 HTTPClient（可选）
 
-你可以传入自定义 `HTTPClient`（例如设置超时、代理、TLS 等）：
+你可以通过 `WithHTTPClient` 选项传入自定义 `HTTPClient`（例如设置超时、代理、TLS 等）：
 
 ```go
 import (
@@ -329,16 +329,16 @@ import (
 	"time"
 )
 
-client, err := goauthsdk.NewClient(goauthsdk.Config{
-	FrontendBaseURL: "https://portal.example.com",
-	BackendBaseURL:  "https://auth.example.com",
-	ClientID:        "your-client-id",
-	ClientSecret:    "your-client-secret",
-	RedirectURI:     "https://yourapp.com/callback",
-	HTTPClient: &http.Client{
+client, err := goauthsdk.NewClient(
+	"https://portal.example.com",
+	"https://auth.example.com",
+	"your-client-id",
+	"your-client-secret",
+	"https://yourapp.com/callback",
+	goauthsdk.WithHTTPClient(&http.Client{
 		Timeout: 10 * time.Second,
-	},
-})
+	}),
+)
 ```
 
 > 说明：SDK 调用 token、introspect 和 revoke 接口时会自动使用 Basic Auth（`client_id` / `client_secret`）。
@@ -369,20 +369,22 @@ go run ./cmd/goauthsdk-testserver
 
 ## 离线验证令牌（可选）
 
-如果你的应用需要在本地验证 JWT 令牌（无需调用服务端 introspect 接口），可以在初始化时配置访问令牌和刷新令牌的签名密钥：
+如果你的应用需要在本地验证 JWT 令牌（无需调用服务端 introspect 接口），可以在初始化时通过选项配置访问令牌和刷新令牌的签名密钥：
 
 ### 通过 Client 使用
 
 ```go
-client, err := goauthsdk.NewClient(goauthsdk.Config{
-	FrontendBaseURL:    "https://portal.example.com",
-	BackendBaseURL:     "https://auth.example.com",
-	ClientID:           "your-client-id",
-	ClientSecret:       "your-client-secret",
-	RedirectURI:        "https://yourapp.com/callback",
-	AccessTokenSecret:  "your-access-token-secret",  // 访问令牌签名密钥
-	RefreshTokenSecret: "your-refresh-token-secret", // 刷新令牌签名密钥
-})
+client, err := goauthsdk.NewClient(
+	"https://portal.example.com",
+	"https://auth.example.com",
+	"your-client-id",
+	"your-client-secret",
+	"https://yourapp.com/callback",
+	goauthsdk.WithJWTSecrets(
+		"your-access-token-secret",  // 访问令牌签名密钥
+		"your-refresh-token-secret", // 刷新令牌签名密钥
+	),
+)
 if err != nil {
 	log.Fatal(err)
 }
@@ -410,6 +412,20 @@ fmt.Printf("刷新令牌用户标识: %s\n", refreshClaims.Subject)
 if err := client.ValidateToken(accessToken); err != nil {
 	log.Fatal("令牌无效:", err)
 }
+```
+
+也可以分别设置访问令牌和刷新令牌的密钥：
+
+```go
+client, err := goauthsdk.NewClient(
+	"https://portal.example.com",
+	"https://auth.example.com",
+	"your-client-id",
+	"your-client-secret",
+	"https://yourapp.com/callback",
+	goauthsdk.WithAccessTokenSecret("your-access-token-secret"),
+	goauthsdk.WithRefreshTokenSecret("your-refresh-token-secret"),
+)
 ```
 
 ### 独立使用 JWTVerifier
@@ -471,6 +487,17 @@ if verifier != nil {
 > - `RefreshTokenSecret` 必须与 goauth 服务端配置的刷新令牌签名密钥一致
 > - 两个密钥可以只配置其中一个，但对应的解析方法需要配置相应的密钥才能使用
 > - 若未配置密钥调用解析方法，将返回 `ErrJWTNotConfigured` 错误
+
+## 可选配置项
+
+`NewClient` 支持以下可选配置（通过 `ClientOption` 传入）：
+
+| 选项 | 说明 |
+|------|------|
+| `WithHTTPClient(client)` | 自定义 HTTP 客户端（设置超时、代理等） |
+| `WithAccessTokenSecret(secret)` | 访问令牌签名密钥（用于离线验签） |
+| `WithRefreshTokenSecret(secret)` | 刷新令牌签名密钥（用于离线验签） |
+| `WithJWTSecrets(access, refresh)` | 同时设置访问/刷新令牌密钥 |
 
 ## 常见注意事项
 
