@@ -14,7 +14,7 @@ type APIError struct {
 	Status int `json:"status"`
 
 	// Code 业务错误码（字符串形式）
-	// 可能来源于 RFC7807 ProblemDetails.Code、ProblemDetails.Title 或 apiCodeResponse.Code
+	// 可能来源于 RFC7807 problemDetails.Code、problemDetails.Title 或 apiCodeResponse.Code
 	Code string `json:"code,omitempty"`
 
 	// Detail 错误详情描述
@@ -47,10 +47,10 @@ func (e *APIError) Error() string {
 }
 
 // decodeAPIError 从 HTTP 响应解析统一的 APIError
-// 优先按 RFC7807 ProblemDetails 解码，其次尝试 {code, message}，最后兜底生成基于 HTTP status 的错误
+// 优先按 RFC7807 problemDetails（内部类型）解码，其次尝试 {code, message}，最后兜底生成基于 HTTP status 的错误
 func decodeAPIError(resp *http.Response, body []byte) *APIError {
-	// 尝试解析 RFC7807 ProblemDetails
-	var pd ProblemDetails
+	// 尝试解析 RFC7807 problemDetails（内部类型）
+	var pd problemDetails
 	if err := json.Unmarshal(body, &pd); err == nil && (pd.Code != "" || pd.Title != "" || pd.Detail != "") {
 		code := pd.Code
 		if code == "" {

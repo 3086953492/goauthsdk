@@ -18,15 +18,16 @@ import (
 //
 // 返回:
 //   - *UserInfo: 用户信息（sub、nickname、picture、updated_at）
-//   - error: 失败时返回错误；若为 401/403/404 等，返回的 error 可断言为 *ProblemDetails
+//   - error: 失败时返回错误；若为 401/403/404 等，可通过 errors.As 获取 *APIError
 //
 // 示例用法:
 //
 //	info, err := client.UserInfo(context.Background(), token.AccessToken.AccessToken)
 //	if err != nil {
-//	    // 可尝试断言为 *goauthsdk.ProblemDetails 获取具体错误码
-//	    if pd, ok := err.(*goauthsdk.ProblemDetails); ok {
-//	        fmt.Printf("错误码: %s, 详情: %s\n", pd.Code, pd.Detail)
+//	    // 可通过 errors.As 获取结构化错误信息
+//	    var apiErr *goauthsdk.APIError
+//	    if errors.As(err, &apiErr) {
+//	        fmt.Printf("错误码: %s, 详情: %s\n", apiErr.Code, apiErr.Detail)
 //	    }
 //	    log.Fatal(err)
 //	}
