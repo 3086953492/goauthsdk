@@ -1,13 +1,13 @@
 # goauthsdk
 
-`goauthsdk` 是一个 Go 语言 SDK，用于对接 **goauth** 服务的 OAuth2 授权码模式（Authorization Code）常用流程：
+`goauthsdk` 是一个 Go 语言 SDK，用于对接 **goauth** 服务的 OAuth2 常用流程：
 
-- 构建用户授权跳转 URL（前端授权确认页）
-- 使用授权码（code）交换访问令牌（access token）
-- 使用刷新令牌（refresh token）刷新访问令牌
+- 授权码模式（Authorization Code）：构建用户授权跳转 URL、授权码交换令牌、刷新令牌
+- 客户端凭证模式（Client Credentials）：服务端到服务端的机密通信
 - 内省（introspect）令牌有效性（RFC 7662）
 - 撤销（revoke）令牌（RFC 7009）
 - 获取用户信息（userinfo）
+- 根据用户 ID 获取用户详情
 - 离线验证令牌（基于 JWT 签名验签，无需调用服务端）
 
 ## 安装
@@ -16,7 +16,7 @@
 go get github.com/3086953492/goauthsdk
 ```
 
-要求：Go 1.21+
+要求：Go 1.23+
 
 ## 基本概念与 URL 说明
 
@@ -24,14 +24,17 @@ SDK 的配置分为两类 BaseURL：
 
 - **FrontendBaseURL**：goauth 的前端站点地址（用于拼接用户授权确认页 `GET /oauth/authorize`）。
 - **BackendBaseURL**：goauth 的后端服务地址（用于调用实际接口）：
-  - `POST /api/v1/oauth/token` - 换取/刷新访问令牌
+  - `POST /api/v1/oauth/token` - 换取/刷新访问令牌、客户端凭证模式
   - `POST /api/v1/oauth/introspect` - 令牌内省（RFC 7662）
   - `POST /api/v1/oauth/revoke` - 令牌撤销（RFC 7009）
-  - `GET /api/v1/oauth/userinfo` - 获取用户信息
+  - `GET /api/v1/oauth/userinfo` - 获取当前用户信息
+  - `GET /api/v1/users/{id}` - 获取指定用户详情
 
 ### 接口响应格式
 
 Token 接口返回格式为 `{ "code": 0, "message": "...", "data": {...} }`（`code == 0` 表示成功）：
+
+**授权码模式 / 刷新令牌响应：**
 
 ```json
 {
@@ -48,6 +51,21 @@ Token 接口返回格式为 `{ "code": 0, "message": "...", "data": {...} }`（`
     },
     "token_type": "Bearer",
     "scope": "read write"
+  }
+}
+```
+
+**客户端凭证模式响应：**
+
+```json
+{
+  "code": 0,
+  "message": "获取访问令牌成功",
+  "data": {
+    "access_token": "xxx",
+    "expires_in": 3600,
+    "token_type": "Bearer",
+    "scope": "api"
   }
 }
 ```
@@ -163,7 +181,30 @@ if err != nil {
 _ = newToken
 ```
 
-### 5) 内省令牌（RFC 7662）
+### 5) 客户端凭证模式
+
+适用于服务端到服务端的机密通信，无用户上下文：
+
+```go
+// 使用客户端凭证模式获取访问令牌
+token, err := client.ClientCredentialsToken(context.Background(), "api")
+if err != nil {
+	// handle error
+}
+
+// token.AccessToken  - JWT 访问令牌
+// token.ExpiresIn    - 过期时间（秒）
+// token.TokenType    - 令牌类型，通常为 "Bearer"
+// token.Scope        - 授权范围
+fmt.Printf("Access Token: %s\n", token.AccessToken)
+```
+
+> **注意**：
+> - 该模式下 JWT 的 sub 固定为 "client:<client_id>"
+> - 使用该 token 调用 IntrospectToken 时，返回 active=true 但不含 username/sub
+> - 该 token 不适用于 UserInfo 接口（因为无用户上下文）
+
+### 6) 内省令牌（RFC 7662）
 
 ```go
 // 内省访问令牌
@@ -182,7 +223,7 @@ if resp.Active {
 resp, err = client.IntrospectTokenWithHint(context.Background(), refreshToken, "refresh_token")
 ```
 
-### 6) 撤销令牌（RFC 7009）
+### 7) 撤销令牌（RFC 7009）
 
 ```go
 // 撤销访问令牌
@@ -195,16 +236,17 @@ if err != nil {
 err = client.RevokeTokenWithHint(context.Background(), refreshToken, "refresh_token")
 ```
 
-### 7) 获取用户信息
+### 8) 获取用户信息
+
+使用访问令牌获取当前授权用户的基本信息：
 
 ```go
-// 使用访问令牌获取用户信息
 info, err := client.UserInfo(context.Background(), token.AccessToken.AccessToken)
 if err != nil {
-	// 可尝试断言为 *goauthsdk.ProblemDetails 获取具体错误码
-	if pd, ok := err.(*goauthsdk.ProblemDetails); ok {
-		// pd.Code 可能为 INVALID_TOKEN、INSUFFICIENT_SCOPE、USER_NOT_FOUND 等
-		fmt.Printf("错误码: %s, 详情: %s\n", pd.Code, pd.Detail)
+	// 可通过 errors.As 获取结构化错误信息
+	var apiErr *goauthsdk.APIError
+	if errors.As(err, &apiErr) {
+		fmt.Printf("错误码: %s, 详情: %s\n", apiErr.Code, apiErr.Detail)
 	}
 	// handle error
 }
@@ -215,6 +257,67 @@ if err != nil {
 // info.UpdatedAt - 用户信息更新时间（Unix 时间戳）
 fmt.Printf("用户ID: %s, 昵称: %s\n", info.Sub, info.Nickname)
 ```
+
+### 9) 获取用户详情
+
+根据用户 ID 获取用户的详细信息（需要 client_credentials 模式的 token）：
+
+```go
+// 先获取 client_credentials token（需包含 profile scope）
+ccToken, err := client.ClientCredentialsToken(context.Background(), "profile")
+if err != nil {
+	log.Fatal(err)
+}
+
+// 获取用户详情
+user, err := client.GetUser(context.Background(), ccToken.AccessToken, 123)
+if err != nil {
+	var apiErr *goauthsdk.APIError
+	if errors.As(err, &apiErr) {
+		fmt.Printf("错误码: %s, 详情: %s\n", apiErr.Code, apiErr.Detail)
+	}
+	log.Fatal(err)
+}
+
+// user.ID        - 用户主键 ID
+// user.Subject   - 用户唯一标识（对外使用）
+// user.Username  - 用户名
+// user.Nickname  - 昵称
+// user.Avatar    - 头像 URL
+// user.Status    - 状态：1=正常，0=禁用
+// user.Role      - 角色：user / admin
+// user.CreatedAt - 创建时间（ISO 8601 格式）
+// user.UpdatedAt - 更新时间（ISO 8601 格式）
+fmt.Printf("用户ID: %d, 用户名: %s, 昵称: %s\n", user.ID, user.Username, user.Nickname)
+```
+
+## 错误处理
+
+SDK 统一使用 `*APIError` 类型返回 API 错误，可通过 `errors.As` 获取结构化错误信息：
+
+```go
+import "errors"
+
+info, err := client.UserInfo(context.Background(), accessToken)
+if err != nil {
+	var apiErr *goauthsdk.APIError
+	if errors.As(err, &apiErr) {
+		fmt.Printf("HTTP 状态码: %d\n", apiErr.Status)
+		fmt.Printf("错误码: %s\n", apiErr.Code)
+		fmt.Printf("错误详情: %s\n", apiErr.Detail)
+	}
+}
+```
+
+`APIError` 结构体字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `Status` | `int` | HTTP 状态码 |
+| `Code` | `string` | 业务错误码 |
+| `Detail` | `string` | 错误详情描述 |
+| `Type` | `string` | RFC7807 问题类型 URI |
+| `Title` | `string` | RFC7807 错误标题 |
 
 ## 自定义 HTTPClient（可选）
 
@@ -242,26 +345,33 @@ client, err := goauthsdk.NewClient(goauthsdk.Config{
 
 ## 运行本仓库的手工测试服务（可选）
 
-仓库自带一个用于开发/测试的手工验证服务：`test/main.go`，包含完整流程的路由（`/auth`、`/callback`、`/introspect`、`/refresh`、`/revoke`）。
+仓库自带一个用于开发/测试的手工验证服务：`cmd/goauthsdk-testserver`，包含完整流程的路由。
 
 ```bash
-go run ./test
+go run ./cmd/goauthsdk-testserver
 ```
 
-启动后访问 `http://localhost:7000/` 查看说明，然后：
+启动后访问 `http://localhost:7000/` 查看说明，支持的路由包括：
 
-- 访问 `http://localhost:7000/auth` 发起授权
-- 授权完成后会自动回跳到 `/callback` 并展示 token
-- 用 `/introspect?token=xxx` 内省 token
-- 用 `/introspect?token=xxx&token_type_hint=refresh_token` 内省刷新令牌
-- 用 `/refresh?refresh_token=xxx` 刷新 token
-- 用 `/revoke?token=xxx` 撤销 token
-- 用 `/revoke?token=xxx&token_type_hint=refresh_token` 撤销刷新令牌
-- 用 `/userinfo?token=xxx` 获取用户信息
+| 路由 | 说明 |
+|------|------|
+| `GET /` | 说明页 |
+| `GET /auth` | 发起 OAuth 授权（可选参数: `?scope=read&state=test`） |
+| `GET /callback` | OAuth 回调地址（自动接收 code 并交换 token） |
+| `GET /client_credentials` | 客户端凭证模式获取令牌（可选参数: `?scope=api`） |
+| `GET /introspect` | 内省令牌（必需: `?token=xxx`，可选: `&token_type_hint=access_token\|refresh_token`） |
+| `GET /refresh` | 刷新访问令牌（必需参数: `?refresh_token=xxx`） |
+| `GET /revoke` | 撤销令牌（必需: `?token=xxx`，可选: `&token_type_hint=access_token\|refresh_token`） |
+| `GET /userinfo` | 获取用户信息（必需: `?token=xxx`） |
+| `GET /user` | 获取用户详情（必需: `?token=xxx&user_id=123`） |
+| `GET /parse` | 离线解析令牌（必需: `?token=xxx`，可选: `&type=access\|refresh`） |
+| `GET /validate` | 离线验证令牌有效性（必需: `?token=xxx`） |
 
 ## 离线验证令牌（可选）
 
 如果你的应用需要在本地验证 JWT 令牌（无需调用服务端 introspect 接口），可以在初始化时配置访问令牌和刷新令牌的签名密钥：
+
+### 通过 Client 使用
 
 ```go
 client, err := goauthsdk.NewClient(goauthsdk.Config{
@@ -302,6 +412,49 @@ if err := client.ValidateToken(accessToken); err != nil {
 }
 ```
 
+### 独立使用 JWTVerifier
+
+如果你只需要离线验签功能，无需完整的 OAuth 客户端，可以直接使用 `JWTVerifier`：
+
+```go
+// 创建独立的 JWTVerifier
+verifier, err := goauthsdk.NewJWTVerifier(
+	"your-access-token-secret",  // 访问令牌签名密钥
+	"your-refresh-token-secret", // 刷新令牌签名密钥（可传空字符串）
+)
+if err != nil {
+	log.Fatal(err)
+}
+
+// 解析访问令牌
+claims, err := verifier.ParseAccessToken(accessToken)
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Printf("Subject: %s\n", claims.Subject)
+
+// 解析刷新令牌
+refreshClaims, err := verifier.ParseRefreshToken(refreshToken)
+if err != nil {
+	log.Fatal(err)
+}
+
+// 仅验证令牌有效性
+if err := verifier.ValidateToken(accessToken); err != nil {
+	log.Fatal("令牌无效:", err)
+}
+```
+
+也可以通过 `Client.JWTVerifier()` 获取底层的 `JWTVerifier` 实例：
+
+```go
+verifier := client.JWTVerifier()
+if verifier != nil {
+	claims, _ := verifier.ParseAccessToken(accessToken)
+	// ...
+}
+```
+
 **Claims 结构体字段说明：**
 
 | 字段 | 类型 | 说明 |
@@ -317,6 +470,7 @@ if err := client.ValidateToken(accessToken); err != nil {
 > - `AccessTokenSecret` 必须与 goauth 服务端配置的访问令牌签名密钥一致
 > - `RefreshTokenSecret` 必须与 goauth 服务端配置的刷新令牌签名密钥一致
 > - 两个密钥可以只配置其中一个，但对应的解析方法需要配置相应的密钥才能使用
+> - 若未配置密钥调用解析方法，将返回 `ErrJWTNotConfigured` 错误
 
 ## 常见注意事项
 
