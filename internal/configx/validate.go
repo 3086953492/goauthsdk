@@ -1,10 +1,10 @@
-package goauthsdk
+package configx
 
 import "fmt"
 
-// validateConfig 校验配置的必填字段
+// Validate 校验配置的必填字段
 // 错误字符串遵循规则：小写开头、无结尾标点，且不泄漏敏感信息
-func validateConfig(cfg *Config) error {
+func Validate(cfg *Config) error {
 	if cfg.FrontendBaseURL == "" {
 		return fmt.Errorf("frontend_base_url is required")
 	}
