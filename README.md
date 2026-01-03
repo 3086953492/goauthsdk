@@ -260,7 +260,7 @@ fmt.Printf("用户ID: %s, 昵称: %s\n", info.Sub, info.Nickname)
 
 ### 9) 获取用户详情
 
-根据用户 ID 获取用户的详细信息（需要 client_credentials 模式的 token）：
+根据用户 sub 获取用户的详细信息（需要 client_credentials 模式的 token）：
 
 ```go
 // 先获取 client_credentials token（需包含 profile scope）
@@ -269,8 +269,8 @@ if err != nil {
 	log.Fatal(err)
 }
 
-// 获取用户详情
-user, err := client.GetUser(context.Background(), ccToken.AccessToken, 123)
+// 获取用户详情（sub 可从 userinfo.Sub 或 JWT claims 中获取）
+user, err := client.GetUser(context.Background(), ccToken.AccessToken, "user-sub-xxx")
 if err != nil {
 	var apiErr *goauthsdk.APIError
 	if errors.As(err, &apiErr) {

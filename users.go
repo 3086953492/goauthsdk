@@ -5,17 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/3086953492/goauthsdk/internal/httpx"
 )
 
-// GetUser 根据用户 ID 获取用户详情
-// 调用 GET /api/v1/users/{id} 接口，需传入有效的 access_token（通常为 client_credentials 模式获取）
+// GetUser 根据 sub 获取用户详情
+// 调用 GET /api/v1/users/sub/{sub} 接口，需传入有效的 access_token（通常为 client_credentials 模式获取）
 //
 // 参数:
 //   - ctx: 上下文，用于控制请求超时等
 //   - accessToken: 有效的访问令牌（需包含 profile scope）
-//   - userID: 用户 ID
+//   - sub: 用户唯一标识（subject）
 //
 // 返回:
 //   - *UserDetail: 用户详情
@@ -29,8 +30,8 @@ import (
 //	    log.Fatal(err)
 //	}
 //
-//	// 获取用户详情
-//	user, err := client.GetUser(context.Background(), tokenResp.AccessToken, 123)
+//	// 获取用户详情（sub 可从 userinfo.Sub 或 JWT claims 中获取）
+//	user, err := client.GetUser(context.Background(), tokenResp.AccessToken, "user-sub-xxx")
 //	if err != nil {
 //	    // 可通过 errors.As 获取结构化错误信息
 //	    var apiErr *goauthsdk.APIError
@@ -40,16 +41,16 @@ import (
 //	    log.Fatal(err)
 //	}
 //	fmt.Printf("用户ID: %d, 用户名: %s, 昵称: %s\n", user.ID, user.Username, user.Nickname)
-func (c *Client) GetUser(ctx context.Context, accessToken string, userID uint64) (*UserDetail, error) {
+func (c *Client) GetUser(ctx context.Context, accessToken string, sub string) (*UserDetail, error) {
 	if accessToken == "" {
 		return nil, fmt.Errorf("access_token is required")
 	}
-	if userID == 0 {
-		return nil, fmt.Errorf("user_id is required")
+	if sub == "" {
+		return nil, fmt.Errorf("sub is required")
 	}
 
 	// 构建请求
-	req, err := buildGetUserRequest(ctx, c, accessToken, userID)
+	req, err := buildGetUserRequest(ctx, c, accessToken, sub)
 	if err != nil {
 		return nil, err
 	}
@@ -65,9 +66,9 @@ func (c *Client) GetUser(ctx context.Context, accessToken string, userID uint64)
 }
 
 // buildGetUserRequest 构建获取用户详情的 HTTP 请求
-func buildGetUserRequest(ctx context.Context, c *Client, accessToken string, userID uint64) (*http.Request, error) {
-	// 构建请求 URL
-	userURL := fmt.Sprintf("%s/api/v1/users/%d", c.cfg.BackendBaseURL, userID)
+func buildGetUserRequest(ctx context.Context, c *Client, accessToken string, sub string) (*http.Request, error) {
+	// 构建请求 URL（对 sub 做 path escape 防止特殊字符破坏路径）
+	userURL := fmt.Sprintf("%s/api/v1/users/sub/%s", c.cfg.BackendBaseURL, url.PathEscape(sub))
 
 	// 创建 HTTP 请求
 	req, err := http.NewRequestWithContext(ctx, "GET", userURL, nil)

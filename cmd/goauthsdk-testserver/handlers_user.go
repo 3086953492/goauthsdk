@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"strconv"
 
 	"github.com/3086953492/goauthsdk"
 	"github.com/gin-gonic/gin"
@@ -82,29 +81,20 @@ func handleUserInfo(c *gin.Context) {
 func handleGetUser(c *gin.Context) {
 	// 读取参数
 	token := c.Query("token")
-	userIDStr := c.Query("user_id")
+	sub := c.Query("sub")
 
 	if token == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":  "缺少 token 参数",
-			"detail": "请提供 token 参数，例如: /user?token=xxx&user_id=123",
+			"detail": "请提供 token 参数，例如: /user?token=xxx&sub=user-sub-xxx",
 		})
 		return
 	}
 
-	if userIDStr == "" {
+	if sub == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":  "缺少 user_id 参数",
-			"detail": "请提供 user_id 参数，例如: /user?token=xxx&user_id=123",
-		})
-		return
-	}
-
-	userID, err := strconv.ParseUint(userIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":  "user_id 参数无效",
-			"detail": "user_id 必须为正整数",
+			"error":  "缺少 sub 参数",
+			"detail": "请提供 sub 参数，例如: /user?token=xxx&sub=user-sub-xxx",
 		})
 		return
 	}
@@ -124,10 +114,10 @@ func handleGetUser(c *gin.Context) {
 	if len(token) > 16 {
 		tokenPreview = token[:16] + "..."
 	}
-	log.Printf("开始获取用户详情: token=%s, user_id=%d", tokenPreview, userID)
+	log.Printf("开始获取用户详情: token=%s, sub=%s", tokenPreview, sub)
 
 	// 调用获取用户详情接口
-	user, err := client.GetUser(context.Background(), token, userID)
+	user, err := client.GetUser(context.Background(), token, sub)
 	if err != nil {
 		log.Printf("获取用户详情失败: %v", err)
 
